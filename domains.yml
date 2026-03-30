@@ -1,0 +1,32 @@
+# domains.yml
+# このファイルで全ドメインを宣言的に管理します。
+# add-domain.sh がこのファイルを読み込んで Nginx 設定・SSL などを自動構成します。
+#
+# フィールド説明:
+#   name         : ドメイン名 (必須)
+#   type         : "php" または "nodejs" (必須)
+#   php_version  : "8.3" / "7.4" など (type: php のとき必須)
+#   port         : Node.js アプリのリッスンポート (type: nodejs のとき必須)
+#   pm2_name     : PM2 プロセス名 (type: nodejs のとき必須)
+#   www_redirect : true の場合 www.{domain} → {domain} へリダイレクト (省略時: false)
+#   ssl          : true の場合 Let's Encrypt で証明書取得 (省略時: false)
+
+domains:
+  - name: example.com
+    type: php
+    php_version: "8.3"
+    www_redirect: true
+    ssl: true
+
+  - name: legacy.example.com
+    type: php
+    php_version: "7.4"
+    www_redirect: false
+    ssl: true
+
+  - name: app.example.com
+    type: nodejs
+    port: 3000
+    pm2_name: app-example
+    www_redirect: false
+    ssl: true
