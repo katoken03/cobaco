@@ -50,3 +50,7 @@ bash deploy.sh example.com
 ### [SETUP_USERS.md](./SETUP_USERS.md) — ユーザーセットアップ手順
 
 新規 VPS にこのシステムを導入する際に最初に実行する作業。`cobaco`（管理者）と `deploy`（デプロイ専用）の2ユーザーを作成し、SSH・sudo・`/var/www/` の権限を設定する。root SSH ログインの禁止もここで行う。**`setup.sh` を実行する前にこの手順を完了させること。**
+
+
+## コミット時のルール
+- コミットメッセージはConventional Commitsを使用すること。メッセージは英語で書くこと。

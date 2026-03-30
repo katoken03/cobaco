@@ -1,0 +1,46 @@
+# wget https://raw.githubusercontent.com/git/git/master/contrib/completion/git-prompt.sh -O ~/.git-prompt.sh
+# chmod a+x ~/.git-prompt.sh
+# echo "source ~/.git-prompt.sh" >> ~/.bash_profile
+# source ~/.bash_profile
+
+
+# alias
+alias ll='ls -la'
+alias  l='ls -laF'
+alias  h='history'
+alias  gr='grep'
+alias hg='history | grep '
+alias  g='git'
+alias  d='docker'
+alias dc='docker-compose'
+alias tf='terraform'
+alias  r='rsub '
+alias  v='vim '
+alias gp='git plog'
+alias gits='git status -uall'
+alias pa='php artisan'
+alias localip='ipconfig getifaddr en0'
+alias globalip='curl ifconfig.io -4'
+alias wi='windsurf '
+alias ws='webstorm '
+alias difit='npx difit'
+alias p='pnpm'
+alias goland='open -a "GoLand"'
+alias ccv='PORT=3400 npx @kimuson/claude-code-viewer@latest; open http://localhost:3400'
+alias ccr='npx @sasazame/ccresume@latest'
+alias  c='cursor'
+alias pest='./vendor/bin/pest'
+alias pint='./vendor/bin/pint'
+alias it='open -a iTerm'
+alias cb='code ~/.bash_profile'
+alias tkill='tmux kill-session -a'
+alias claudeauto='claude —permission-mode auto'
+
+# color
+export TERM=xterm-256color
+
+# prompt
+PS1='[$USER@\H $PWD\[\e[32m\]$(__git_ps1)\[\e[0m\]] $ '
+
+
+source ~/.git-prompt.sh
