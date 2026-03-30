@@ -4,5 +4,8 @@
   "scripts": {
     "build": "bun build --compile src/index.ts --outfile cobaco --target bun-linux-x64",
     "dev": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "yaml": "2.8.3"
   }
 }

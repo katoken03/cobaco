@@ -1,12 +1,14 @@
 import { setup } from './commands/setup';
 import { apply } from './commands/apply';
 import { deploy } from './commands/deploy';
+import { list } from './commands/list';
 
 function printHelp(): void {
   console.log('cobaco <command> [options]');
   console.log('');
   console.log('Commands:');
   console.log('  setup                 Run initial VPS setup');
+  console.log('  list                  List all domains defined in domains.yml');
   console.log('  apply <domain>        Apply domain config defined in domains.yml');
   console.log('  deploy <domain>       Deploy a domain (git pull + build + restart)');
   console.log('');
@@ -35,6 +37,9 @@ if (!subcommand || subcommand === '-h' || subcommand === '--help') {
 switch (subcommand) {
   case 'setup':
     await setup(args);
+    break;
+  case 'list':
+    await list(args);
     break;
   case 'apply':
     await apply(args);
