@@ -3,3 +3,4 @@
 .vscode
 domains.yml
 cli/cobaco
+cli/node_modules/
