@@ -1,0 +1,8 @@
+{
+  "name": "cobaco-cli",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "bun build --compile src/index.ts --outfile cobaco --target bun-linux-x64",
+    "dev": "bun run src/index.ts"
+  }
+}
