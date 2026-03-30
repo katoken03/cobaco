@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # deploy.sh - ドメインのデプロイスクリプト (git pull + ビルド + 再起動)
+# deploy ユーザーで実行する (sudo 不要)
 # 使い方:
-#   sudo bash deploy.sh example.com         # 単一ドメインをデプロイ
-#   sudo bash deploy.sh --all               # domains.yml の全ドメインをデプロイ
-#   sudo bash deploy.sh --branch main example.com  # ブランチ指定
+#   bash deploy.sh example.com              # 単一ドメインをデプロイ
+#   bash deploy.sh --all                    # domains.yml の全ドメインをデプロイ
+#   bash deploy.sh --branch main example.com  # ブランチ指定
 
 set -euo pipefail
 
@@ -22,11 +23,9 @@ warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 die()     { error "$*"; exit 1; }
 
-# ─────────────────────────────────────────────
-# root 確認
-# ─────────────────────────────────────────────
-if [[ $EUID -ne 0 ]]; then
-    die "このスクリプトは root (sudo) で実行してください。"
+# root で実行されていたら警告 (deploy ユーザーで実行すべき)
+if [[ $EUID -eq 0 ]]; then
+    warn "root で実行されています。deploy ユーザーで実行することを推奨します。"
 fi
 
 # スクリプト自身のディレクトリ
@@ -69,9 +68,9 @@ done
 
 if [[ "$DEPLOY_ALL" == false && -z "$TARGET_DOMAIN" ]]; then
     echo "使い方:"
-    echo "  sudo bash deploy.sh <ドメイン名>"
-    echo "  sudo bash deploy.sh --all"
-    echo "  sudo bash deploy.sh --branch main <ドメイン名>"
+    echo "  bash deploy.sh <ドメイン名>"
+    echo "  bash deploy.sh --all"
+    echo "  bash deploy.sh --branch main <ドメイン名>"
     exit 1
 fi
 
@@ -143,7 +142,7 @@ deploy_php() {
     local php_version
     php_version=$(yq e ".domains[] | select(.name == \"${domain}\") | .php_version" "$DOMAINS_FILE")
     if systemctl is-active --quiet "php${php_version}-fpm"; then
-        systemctl reload "php${php_version}-fpm"
+        sudo systemctl reload "php${php_version}-fpm"
         success "PHP ${php_version}-FPM をリロードしました。"
     fi
 }
