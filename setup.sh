@@ -115,14 +115,15 @@ success "Nginx の設定完了"
 # PHP マルチバージョン (ondrej/php PPA)
 # ─────────────────────────────────────────────
 info "ondrej/php PPA を追加中..."
-add-apt-repository -y ppa:ondrej/php
+# --no-update: apt-get update を自動実行させない (suite 書き換え後に手動で実行する)
+add-apt-repository -y --no-update ppa:ondrej/php
 
 # ondrej/php PPA は LTS のみサポート。非 LTS (plucky 等) の場合は noble に書き換える
 SOURCES_FILE=$(find /etc/apt/sources.list.d/ -name "*ondrej*php*" | head -1)
 if [[ -n "$SOURCES_FILE" ]] && grep -q "Suites: ${UBUNTU_CODENAME}" "$SOURCES_FILE"; then
     if ! curl -sf "https://ppa.launchpadcontent.net/ondrej/php/ubuntu/dists/${UBUNTU_CODENAME}/Release" -o /dev/null; then
         warn "ondrej/php PPA は ${UBUNTU_CODENAME} 未対応のため、noble (24.04 LTS) のパッケージを使用します。"
-        sed -i "s/Suites: ${UBUNTU_CODENAME}/Suites: noble/" "$SOURCES_FILE"
+        sed -i "s/^Suites:.*/Suites: noble/" "$SOURCES_FILE"
     fi
 fi
 
