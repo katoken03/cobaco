@@ -100,9 +100,8 @@ if [[ -L /etc/nginx/sites-enabled/default ]]; then
     info "デフォルトサイトを無効化しました。"
 fi
 
-# セキュリティ基本設定 (server_tokens off 等)
+# セキュリティヘッダー設定 (server_tokens は nginx.conf に既に定義されているため除外)
 cat > /etc/nginx/conf.d/security.conf << 'EOF'
-server_tokens off;
 add_header X-Frame-Options SAMEORIGIN;
 add_header X-Content-Type-Options nosniff;
 add_header X-XSS-Protection "1; mode=block";
