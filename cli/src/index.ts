@@ -1,26 +1,26 @@
 import { setup } from './commands/setup';
-import { add } from './commands/add';
+import { apply } from './commands/apply';
 import { deploy } from './commands/deploy';
 
 function printHelp(): void {
   console.log('cobaco <command> [options]');
   console.log('');
   console.log('Commands:');
-  console.log('  setup               Run initial VPS setup');
-  console.log('  add <domain>        Add a domain and generate Nginx config');
-  console.log('  deploy <domain>     Deploy a domain (git pull + build + restart)');
+  console.log('  setup                 Run initial VPS setup');
+  console.log('  apply <domain>        Apply domain config defined in domains.yml');
+  console.log('  deploy <domain>       Deploy a domain (git pull + build + restart)');
   console.log('');
   console.log('Options:');
-  console.log('  --all               Target all domains (add / deploy)');
-  console.log('  --dry-run           Validate only, no changes (add)');
-  console.log('  --branch <branch>   Branch to deploy (deploy, default: main)');
-  console.log('  -h, --help          Show help');
+  console.log('  --all                 Target all domains (apply / deploy)');
+  console.log('  --dry-run             Validate only, no changes (apply)');
+  console.log('  --branch <branch>     Branch to deploy (deploy, default: main)');
+  console.log('  -h, --help            Show help');
   console.log('');
   console.log('Examples:');
   console.log('  cobaco setup');
-  console.log('  cobaco add example.com');
-  console.log('  cobaco add --dry-run example.com');
-  console.log('  cobaco add --all');
+  console.log('  cobaco apply example.com');
+  console.log('  cobaco apply --dry-run example.com');
+  console.log('  cobaco apply --all');
   console.log('  cobaco deploy example.com');
   console.log('  cobaco deploy --branch develop example.com');
 }
@@ -36,8 +36,8 @@ switch (subcommand) {
   case 'setup':
     await setup(args);
     break;
-  case 'add':
-    await add(args);
+  case 'apply':
+    await apply(args);
     break;
   case 'deploy':
     await deploy(args);
