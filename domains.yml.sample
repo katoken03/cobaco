@@ -5,7 +5,8 @@
 # フィールド説明:
 #   name         : ドメイン名 (必須)
 #   type         : "php" または "nodejs" (必須)
-#   php_version  : "8.3" / "7.4" など (type: php のとき必須)
+#   php_version  : "8.5" / "8.3" / "7.4" など (type: php のとき必須)
+#                  Ubuntu 26.04 の公開サイトは 8.5、24.04 は公式最新の 8.3
 #   port         : Node.js アプリのリッスンポート (type: nodejs のとき必須)
 #   pm2_name     : PM2 プロセス名 (type: nodejs のとき必須)
 #   www_redirect : true の場合 www.{domain} → {domain} へリダイレクト (省略時: false)
@@ -14,7 +15,7 @@
 domains:
   - name: example.com
     type: php
-    php_version: "8.3"
+    php_version: "8.5"
     www_redirect: true
     ssl: true
 

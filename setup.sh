@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # setup.sh - VPS 初回セットアップスクリプト
-# 使い方: sudo bash setup.sh
+# 使い方: root で bash setup.sh
 # 再実行しても安全 (冪等性を考慮)
 
 set -euo pipefail
@@ -23,7 +23,7 @@ error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 # root 確認
 # ─────────────────────────────────────────────
 if [[ $EUID -ne 0 ]]; then
-    error "このスクリプトは root (sudo) で実行してください。"
+    error "このスクリプトは root で実行してください。"
     exit 1
 fi
 
@@ -33,8 +33,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ─────────────────────────────────────────────
 # Ubuntu バージョン確認・警告
 # ─────────────────────────────────────────────
-UBUNTU_CODENAME="$(lsb_release -sc 2>/dev/null || echo unknown)"
-UBUNTU_VERSION="$(lsb_release -sr 2>/dev/null || echo unknown)"
+# shellcheck source=/dev/null
+source /etc/os-release
+UBUNTU_CODENAME="${VERSION_CODENAME:-unknown}"
+UBUNTU_VERSION="${VERSION_ID:-unknown}"
 
 info "Ubuntu ${UBUNTU_VERSION} (${UBUNTU_CODENAME}) を検出しました。"
 
@@ -112,44 +114,13 @@ systemctl reload nginx
 success "Nginx の設定完了"
 
 # ─────────────────────────────────────────────
-# PHP マルチバージョン (ondrej/php PPA)
+# PHP マルチバージョン
 # ─────────────────────────────────────────────
-info "ondrej/php PPA を追加中..."
-# --no-update: apt-get update を自動実行させない (suite 書き換え後に手動で実行する)
-add-apt-repository -y --no-update ppa:ondrej/php
-
-# ondrej/php PPA は LTS のみサポート。非 LTS (plucky 等) の場合は noble に書き換える
-SOURCES_FILE=$(find /etc/apt/sources.list.d/ -name "*ondrej*php*" | head -1)
-if [[ -n "$SOURCES_FILE" ]] && grep -q "Suites: ${UBUNTU_CODENAME}" "$SOURCES_FILE"; then
-    if ! curl -sf "https://ppa.launchpadcontent.net/ondrej/php/ubuntu/dists/${UBUNTU_CODENAME}/Release" -o /dev/null; then
-        warn "ondrej/php PPA は ${UBUNTU_CODENAME} 未対応のため、noble (24.04 LTS) のパッケージを使用します。"
-        sed -i "s/^Suites:.*/Suites: noble/" "$SOURCES_FILE"
+install_php74_fpm() {
+    if ! apt-cache show php7.4-fpm &>/dev/null; then
+        error "PHP 7.4 (php7.4-fpm) が利用できません。Ubuntu ${UBUNTU_VERSION} (${UBUNTU_CODENAME}) 向けのリポジトリを確認してください。"
+        exit 1
     fi
-fi
-
-apt-get update -qq
-success "PPA の追加完了"
-
-# PHP 8.3 のインストール
-info "PHP 8.3 をインストール中..."
-apt-get install -y -qq \
-    php8.3-fpm \
-    php8.3-mysql \
-    php8.3-curl \
-    php8.3-mbstring \
-    php8.3-xml \
-    php8.3-zip \
-    php8.3-intl \
-    php8.3-gd \
-    php8.3-bcmath \
-    php8.3-opcache
-systemctl enable php8.3-fpm
-systemctl start php8.3-fpm
-success "PHP 8.3 のインストール完了"
-
-# PHP 7.4 のインストール (PPA サポート確認付き)
-info "PHP 7.4 の利用可否を確認中..."
-if apt-cache show php7.4-fpm &>/dev/null; then
     info "PHP 7.4 をインストール中..."
     apt-get install -y -qq \
         php7.4-fpm \
@@ -164,12 +135,84 @@ if apt-cache show php7.4-fpm &>/dev/null; then
     systemctl enable php7.4-fpm
     systemctl start php7.4-fpm
     success "PHP 7.4 のインストール完了"
+}
+
+if [[ "$UBUNTU_CODENAME" == "resolute" ]]; then
+    # Ubuntu 26.04: 公開サイト用 PHP 8.5 は公式、レガシー用 PHP 7.4 は packages.sury.org
+    info "PHP 8.5 (Ubuntu 公式) をインストール中..."
+    apt-get install -y -qq \
+        php8.5-fpm \
+        php8.5-mysql \
+        php8.5-curl \
+        php8.5-mbstring \
+        php8.5-xml \
+        php8.5-zip \
+        php8.5-intl \
+        php8.5-gd \
+        php8.5-bcmath
+    systemctl enable php8.5-fpm
+    systemctl start php8.5-fpm
+    success "PHP 8.5 のインストール完了"
+
+    info "packages.sury.org (PHP 7.4) を追加中..."
+    curl -sSLo /tmp/debsuryorg-archive-keyring.deb \
+        https://packages.sury.org/debsuryorg-archive-keyring.deb
+    dpkg -i /tmp/debsuryorg-archive-keyring.deb
+    echo "deb [signed-by=/usr/share/keyrings/debsuryorg-archive-keyring.gpg] https://packages.sury.org/php/ ${UBUNTU_CODENAME} main" \
+        > /etc/apt/sources.list.d/php-sury.list
+
+    cat > /etc/apt/preferences.d/sury-php << 'EOF'
+Package: *
+Pin: origin packages.sury.org
+Pin-Priority: 100
+
+Package: php-common
+Pin: origin packages.sury.org
+Pin-Priority: 500
+
+Package: php7.4*
+Pin: origin packages.sury.org
+Pin-Priority: 500
+EOF
+
+    apt-get update -qq
+    success "packages.sury.org の追加完了"
+
+    install_php74_fpm
 else
-    warn "PHP 7.4 はこの Ubuntu バージョン (${UBUNTU_VERSION}) の PPA では利用できません。"
-    warn "PHP 7.4 が必要な場合、以下の選択肢を検討してください:"
-    warn "  1. Docker コンテナとして PHP 7.4 を隔離運用する (php74-docker/ ディレクトリを参照)"
-    warn "  2. Ubuntu 22.04 LTS への移行"
-    warn "PHP 7.4 のセットアップをスキップしてセットアップを続行します。"
+    info "ondrej/php PPA を追加中..."
+    # --no-update: apt-get update を自動実行させない (suite 書き換え後に手動で実行する)
+    add-apt-repository -y --no-update ppa:ondrej/php
+
+    # ondrej/php PPA は LTS のみサポート。非 LTS (plucky 等) の場合は noble に書き換える
+    SOURCES_FILE=$(find /etc/apt/sources.list.d/ -name "*ondrej*php*" | head -1)
+    if [[ -n "$SOURCES_FILE" ]] && grep -q "Suites: ${UBUNTU_CODENAME}" "$SOURCES_FILE"; then
+        if ! curl -sf "https://ppa.launchpadcontent.net/ondrej/php/ubuntu/dists/${UBUNTU_CODENAME}/Release" -o /dev/null; then
+            warn "ondrej/php PPA は ${UBUNTU_CODENAME} 未対応のため、noble (24.04 LTS) のパッケージを使用します。"
+            sed -i "s/^Suites:.*/Suites: noble/" "$SOURCES_FILE"
+        fi
+    fi
+
+    apt-get update -qq
+    success "PPA の追加完了"
+
+    info "PHP 8.3 をインストール中..."
+    apt-get install -y -qq \
+        php8.3-fpm \
+        php8.3-mysql \
+        php8.3-curl \
+        php8.3-mbstring \
+        php8.3-xml \
+        php8.3-zip \
+        php8.3-intl \
+        php8.3-gd \
+        php8.3-bcmath \
+        php8.3-opcache
+    systemctl enable php8.3-fpm
+    systemctl start php8.3-fpm
+    success "PHP 8.3 のインストール完了"
+
+    install_php74_fpm
 fi
 
 # ─────────────────────────────────────────────
@@ -253,12 +296,20 @@ echo -e "${GREEN}======================================${NC}"
 echo ""
 echo "次のステップ:"
 echo "  1. domains.yml にドメインを追加する"
-echo "  2. sudo bash add-domain.sh <ドメイン名> を実行する"
+echo "  2. bash add-domain.sh <ドメイン名> を実行する (root)"
 echo ""
 info "インストール済みバージョン:"
 nginx -v 2>&1 || true
-php8.3 --version | head -1 || true
+if [[ "$UBUNTU_CODENAME" == "resolute" ]]; then
+    php8.5 --version | head -1 || true
+else
+    php8.3 --version | head -1 || true
+fi
 php7.4 --version 2>/dev/null | head -1 || warn "PHP 7.4 は未インストール"
 node --version 2>/dev/null || true
 pm2 --version 2>/dev/null || true
 mariadb --version 2>/dev/null || true
+if [[ "$UBUNTU_CODENAME" == "resolute" ]]; then
+    echo ""
+    warn "PHP 8.5 は universe コンポーネントです。標準サポート期間を超えたセキュリティ更新を確実に受けるには Ubuntu Pro の接続を検討してください。"
+fi

@@ -5,7 +5,7 @@ export async function setup(args: string[]): Promise<void> {
     console.log('Usage: cobaco setup');
     console.log('');
     console.log('Run the initial VPS setup (Nginx, PHP, PM2, MariaDB, firewall).');
-    console.log('Requires sudo.');
+    console.log('Requires root (runs setup.sh via sudo).');
     return;
   }
 

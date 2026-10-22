@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # add-domain.sh - ドメイン追加・Nginx 設定生成スクリプト
 # 使い方:
-#   sudo bash add-domain.sh example.com        # 単一ドメインを設定
-#   sudo bash add-domain.sh --all              # domains.yml の全ドメインを一括設定
-#   sudo bash add-domain.sh --dry-run example.com  # 変更せず検証のみ実行
+#   bash add-domain.sh example.com        # 単一ドメインを設定 (root)
+#   bash add-domain.sh --all              # domains.yml の全ドメインを一括設定
+#   bash add-domain.sh --dry-run example.com  # 変更せず検証のみ実行
 
 set -euo pipefail
 
@@ -26,7 +26,7 @@ die()     { error "$*"; exit 1; }
 # root 確認
 # ─────────────────────────────────────────────
 if [[ $EUID -ne 0 ]]; then
-    die "このスクリプトは root (sudo) で実行してください。"
+    die "このスクリプトは root で実行してください。"
 fi
 
 # スクリプト自身のディレクトリ
@@ -63,9 +63,9 @@ done
 
 if [[ "$ADD_ALL" == false && -z "$TARGET_DOMAIN" ]]; then
     echo "使い方:"
-    echo "  sudo bash add-domain.sh <ドメイン名>"
-    echo "  sudo bash add-domain.sh --all"
-    echo "  sudo bash add-domain.sh --dry-run <ドメイン名>"
+    echo "  bash add-domain.sh <ドメイン名>  (root)"
+    echo "  bash add-domain.sh --all"
+    echo "  bash add-domain.sh --dry-run <ドメイン名>"
     exit 1
 fi
 
