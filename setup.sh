@@ -37,6 +37,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source /etc/os-release
 UBUNTU_CODENAME="${VERSION_CODENAME:-unknown}"
 UBUNTU_VERSION="${VERSION_ID:-unknown}"
+UBUNTU_MAJOR="${UBUNTU_VERSION%%.*}"
+USE_SURY_PHP=false
+if [[ "$UBUNTU_MAJOR" =~ ^[0-9]+$ ]] && (( UBUNTU_MAJOR >= 26 )); then
+    USE_SURY_PHP=true
+fi
 
 info "Ubuntu ${UBUNTU_VERSION} (${UBUNTU_CODENAME}) を検出しました。"
 
@@ -224,8 +229,8 @@ install_php85_fpm() {
     success "PHP 8.5 のインストール完了"
 }
 
-if [[ "$UBUNTU_CODENAME" == "resolute" ]]; then
-    # Ubuntu 26.04: PHP 8.5 / 7.3 / 7.4 / 8.2 / 8.3 は packages.sury.org
+if [[ "$USE_SURY_PHP" == true ]]; then
+    # Ubuntu 26 以降: PHP 8.5 / 7.3 / 7.4 / 8.2 / 8.3 は packages.sury.org
     info "packages.sury.org (PHP 8.5 / 7.3 / 7.4 / 8.2 / 8.3) を追加中..."
     curl -sSLo /tmp/debsuryorg-archive-keyring.deb \
         https://packages.sury.org/debsuryorg-archive-keyring.deb
@@ -402,7 +407,7 @@ echo "  2. bash add-domain.sh <ドメイン名> を実行する (root)"
 echo ""
 info "インストール済みバージョン:"
 nginx -v 2>&1 || true
-if [[ "$UBUNTU_CODENAME" == "resolute" ]]; then
+if [[ "$USE_SURY_PHP" == true ]]; then
     php8.5 --version | head -1 || true
 else
     php8.3 --version | head -1 || true

@@ -271,6 +271,180 @@ ssl_certificate_exists() {
     [[ -f "/etc/letsencrypt/live/${domain}/fullchain.pem" ]]
 }
 
+ssl_subdomains_count() {
+    local domain="$1"
+    yq e ".domains[] | select(.name == \"${domain}\") | .ssl_subdomains | length" "$DOMAINS_FILE"
+}
+
+read_ssl_subdomains() {
+    local domain="$1"
+    yq -r ".domains[] | select(.name == \"${domain}\") | .ssl_subdomains[]?" "$DOMAINS_FILE" 2>/dev/null || true
+}
+
+validate_ssl_subdomains_config() {
+    local domain="$1"
+    local ssl www_redirect
+    ssl=$(yq e ".domains[] | select(.name == \"${domain}\") | .ssl" "$DOMAINS_FILE")
+    www_redirect=$(yq e ".domains[] | select(.name == \"${domain}\") | .www_redirect" "$DOMAINS_FILE")
+
+    local count
+    count=$(ssl_subdomains_count "$domain")
+    if [[ "$count" == "null" || -z "$count" ]]; then
+        count=0
+    fi
+    if [[ ! "$count" =~ ^[0-9]+$ ]]; then
+        die "[${domain}] ssl_subdomains の形式が不正です。文字列の配列で指定してください。"
+    fi
+
+    if [[ "$ssl" != "true" && "$count" -gt 0 ]]; then
+        die "[${domain}] ssl_subdomains は ssl: true のときのみ指定できます。"
+    fi
+
+    if [[ "$count" -eq 0 ]]; then
+        if [[ "$ssl" == "true" && "$www_redirect" == "true" ]]; then
+            die "[${domain}] ssl: true かつ www_redirect: true のとき、ssl_subdomains に www.${domain} を追加してください。"
+        fi
+        return 0
+    fi
+
+    local dup other_names host suffix seen=() has_www=false
+    suffix=".${domain}"
+    other_names=$(yq -r '.domains[].name' "$DOMAINS_FILE" | grep -vxF "$domain" || true)
+
+    while IFS= read -r host; do
+        [[ -z "$host" || "$host" == "null" ]] && continue
+
+        [[ "$host" == "$domain" ]] && die "[${domain}] ssl_subdomains に apex (${domain}) は指定できません。name に含まれます。"
+        [[ "$host" == *"*"* ]] && die "[${domain}] ssl_subdomains にワイルドカードは使えません。(指定値: ${host})"
+        [[ "$host" == *"${suffix}" ]] || die "[${domain}] ssl_subdomains の各要素は *.${domain} 形式の FQDN にしてください。(指定値: ${host})"
+
+        if [[ "$host" == "www.${domain}" ]]; then
+            has_www=true
+        fi
+
+        local s
+        for s in "${seen[@]:-}"; do
+            [[ "$s" == "$host" ]] && die "[${domain}] ssl_subdomains に重複があります: ${host}"
+        done
+        seen+=("$host")
+
+        if echo "$other_names" | grep -qxF "$host"; then
+            die "[${domain}] ssl_subdomains の ${host} は別エントリの name と衝突します。別サイトとして運用する場合は domains に別行で定義してください。"
+        fi
+
+        if ! host "$host" &>/dev/null 2>&1; then
+            warn "[${domain}] ssl_subdomains の ${host} は DNS が解決できません。Let's Encrypt 取得前に DNS を設定してください。"
+        fi
+    done < <(read_ssl_subdomains "$domain")
+
+    dup=$(read_ssl_subdomains "$domain" | sort | uniq -d)
+    [[ -z "$dup" ]] || die "[${domain}] ssl_subdomains に重複があります: ${dup}"
+
+    if [[ "$ssl" == "true" && "$www_redirect" == "true" && "$has_www" == false ]]; then
+        die "[${domain}] ssl: true かつ www_redirect: true のとき、ssl_subdomains に www.${domain} を追加してください。"
+    fi
+}
+
+build_server_aliases() {
+    local domain="$1"
+    local www_redirect
+    www_redirect=$(yq e ".domains[] | select(.name == \"${domain}\") | .www_redirect" "$DOMAINS_FILE")
+
+    local aliases=() host seen=()
+
+    if [[ "$www_redirect" == "true" ]]; then
+        aliases+=("www.${domain}")
+        seen+=("www.${domain}")
+    fi
+
+    while IFS= read -r host; do
+        [[ -z "$host" || "$host" == "null" ]] && continue
+        local s found=false
+        for s in "${seen[@]:-}"; do
+            if [[ "$s" == "$host" ]]; then
+                found=true
+                break
+            fi
+        done
+        if [[ "$found" == false ]]; then
+            aliases+=("$host")
+            seen+=("$host")
+        fi
+    done < <(read_ssl_subdomains "$domain")
+
+    local result=""
+    for host in "${aliases[@]:-}"; do
+        result+=" ${host}"
+    done
+    printf '%s' "$result"
+}
+
+build_ssl_certificate_names() {
+    local domain="$1"
+    local names=("$domain") host seen=("$domain")
+
+    while IFS= read -r host; do
+        [[ -z "$host" || "$host" == "null" ]] && continue
+        local s found=false
+        for s in "${seen[@]:-}"; do
+            if [[ "$s" == "$host" ]]; then
+                found=true
+                break
+            fi
+        done
+        if [[ "$found" == false ]]; then
+            names+=("$host")
+            seen+=("$host")
+        fi
+    done < <(read_ssl_subdomains "$domain")
+
+    printf '%s\n' "${names[@]}"
+}
+
+get_certificate_sans() {
+    local domain="$1"
+    local pem="/etc/letsencrypt/live/${domain}/fullchain.pem"
+    [[ -f "$pem" ]] || return 0
+    openssl x509 -in "$pem" -noout -ext subjectAltName 2>/dev/null \
+        | tr ',' '\n' \
+        | sed -n 's/^[[:space:]]*DNS:\(.*\)/\1/p'
+}
+
+certificate_covers_all_names() {
+    local domain="$1"
+    local missing
+    missing=$(certificate_missing_names "$domain")
+    [[ -z "$missing" ]]
+}
+
+certificate_missing_names() {
+    local domain="$1"
+    local desired sans host
+    desired=$(build_ssl_certificate_names "$domain")
+    sans=$(get_certificate_sans "$domain")
+
+    while IFS= read -r host; do
+        [[ -z "$host" ]] && continue
+        if ! echo "$sans" | grep -qxF "$host"; then
+            echo "$host"
+        fi
+    done <<< "$desired"
+}
+
+warn_certificate_extra_sans() {
+    local domain="$1"
+    local desired sans host
+    desired=$(build_ssl_certificate_names "$domain")
+    sans=$(get_certificate_sans "$domain")
+
+    while IFS= read -r host; do
+        [[ -z "$host" ]] && continue
+        if ! echo "$desired" | grep -qxF "$host"; then
+            warn "[${domain}] 証明書に domains.yml に無い名前が含まれています: ${host}（自動では削除しません。更新は certbot.timer に任せます）"
+        fi
+    done <<< "$sans"
+}
+
 use_ssl_nginx_template() {
     local domain="$1"
     local ssl
@@ -350,6 +524,7 @@ validate_domain_config() {
     fi
 
     validate_basic_auth_config "$domain"
+    validate_ssl_subdomains_config "$domain"
 
     # DNS 解決確認 (警告のみ)
     if ! host "$domain" &>/dev/null 2>&1; then
@@ -365,15 +540,12 @@ validate_domain_config() {
 generate_nginx_config() {
     local domain="$1"
 
-    local type php_version port ssl www_redirect
+    local type php_version port ssl
     type=$(yq e ".domains[] | select(.name == \"${domain}\") | .type" "$DOMAINS_FILE")
     ssl=$(yq e ".domains[] | select(.name == \"${domain}\") | .ssl" "$DOMAINS_FILE")
-    www_redirect=$(yq e ".domains[] | select(.name == \"${domain}\") | .www_redirect" "$DOMAINS_FILE")
 
-    local www_alias=""
-    if [[ "$www_redirect" == "true" ]]; then
-        www_alias=" www.${domain}"
-    fi
+    local server_aliases
+    server_aliases=$(build_server_aliases "$domain")
 
     local config_file="/etc/nginx/sites-available/${domain}"
     local tmpl_file
@@ -390,7 +562,7 @@ generate_nginx_config() {
 
         rendered=$(sed \
             -e "s|{{DOMAIN}}|${domain}|g" \
-            -e "s|{{WWW_ALIAS}}|${www_alias}|g" \
+            -e "s|{{SERVER_ALIASES}}|${server_aliases}|g" \
             -e "s|{{PHP_VERSION}}|${php_version}|g" \
             "$tmpl_file")
 
@@ -404,7 +576,7 @@ generate_nginx_config() {
 
         rendered=$(sed \
             -e "s|{{DOMAIN}}|${domain}|g" \
-            -e "s|{{WWW_ALIAS}}|${www_alias}|g" \
+            -e "s|{{SERVER_ALIASES}}|${server_aliases}|g" \
             -e "s|{{PORT}}|${port}|g" \
             "$tmpl_file")
     fi
@@ -422,10 +594,9 @@ apply_domain() {
     # バリデーション
     validate_domain_config "$domain"
 
-    local type ssl www_redirect
+    local type ssl
     type=$(yq e ".domains[] | select(.name == \"${domain}\") | .type" "$DOMAINS_FILE")
     ssl=$(yq e ".domains[] | select(.name == \"${domain}\") | .ssl" "$DOMAINS_FILE")
-    www_redirect=$(yq e ".domains[] | select(.name == \"${domain}\") | .www_redirect" "$DOMAINS_FILE")
 
     # ドキュメントルートの作成
     local webroot
@@ -468,15 +639,37 @@ apply_domain() {
 
     write_and_reload_nginx_config "$domain"
 
-    # SSL 証明書の取得（初回のみ certbot。証明書がある場合は cobaco テンプレートで HTTPS を管理する）
+    # SSL 証明書の取得（SAN が足りないときのみ certbot。揃っている場合は cobaco テンプレートで HTTPS を管理する）
     if [[ "$ssl" == "true" ]]; then
+        local cert_host missing_names
         if ssl_certificate_exists "$domain"; then
-            info "SSL 証明書は既に存在します。certbot --nginx はスキップします（Basic 認証等をテンプレートで維持）。"
-        else
-            local certbot_args=("--nginx" "-d" "$domain" "--non-interactive" "--agree-tos" "--email" "admin@${domain}")
-            if [[ "$www_redirect" == "true" ]]; then
-                certbot_args+=("-d" "www.${domain}")
+            warn_certificate_extra_sans "$domain"
+            if certificate_covers_all_names "$domain"; then
+                info "SSL 証明書は希望する名前をすべて含んでいます。certbot --nginx はスキップします（Basic 認証等をテンプレートで維持）。"
+            else
+                missing_names=$(certificate_missing_names "$domain" | paste -sd, -)
+                info "SSL 証明書に不足している名前があります (${missing_names})。certbot --expand を実行します..."
+                local certbot_args=("--nginx" "--non-interactive" "--agree-tos" "--email" "admin@${domain}" "--cert-name" "$domain" "--expand")
+                while IFS= read -r cert_host; do
+                    [[ -z "$cert_host" ]] && continue
+                    certbot_args+=("-d" "$cert_host")
+                done < <(build_ssl_certificate_names "$domain")
+
+                warn "※ テスト時は --staging フラグを追加することをお勧めします (レート制限回避のため)"
+                if certbot "${certbot_args[@]}"; then
+                    success "SSL 証明書の更新（expand）完了"
+                    info "HTTPS 用 Nginx テンプレートを再適用します..."
+                    write_and_reload_nginx_config "$domain"
+                else
+                    warn "SSL 証明書の更新に失敗しました。DNS 設定を確認してください。"
+                fi
             fi
+        else
+            local certbot_args=("--nginx" "--non-interactive" "--agree-tos" "--email" "admin@${domain}")
+            while IFS= read -r cert_host; do
+                [[ -z "$cert_host" ]] && continue
+                certbot_args+=("-d" "$cert_host")
+            done < <(build_ssl_certificate_names "$domain")
 
             info "Let's Encrypt 証明書を取得中 (${domain})..."
             warn "※ テスト時は --staging フラグを追加することをお勧めします (レート制限回避のため)"

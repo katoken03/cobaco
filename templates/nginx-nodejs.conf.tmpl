@@ -1,6 +1,6 @@
 server {
     listen 80;
-    server_name {{DOMAIN}}{{WWW_ALIAS}};
+    server_name {{DOMAIN}}{{SERVER_ALIASES}};
 
     access_log /var/log/nginx/{{DOMAIN}}-access.log;
     error_log  /var/log/nginx/{{DOMAIN}}-error.log;

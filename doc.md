@@ -35,10 +35,10 @@ chmod 644 /root/cobaco_config/domains.yml
 
 | Ubuntu | 入手元 | `setup.sh` が入れる版（例） |
 |--------|--------|------------------------------|
-| 26.04 (resolute) | [packages.sury.org](https://packages.sury.org/php/) | 8.5, 7.3, 7.4, 8.2, 8.3 |
-| 24.04 など | **ondrej/php** PPA | 8.3, 7.4 |
+| **26 以降**（`VERSION_ID` のメジャーが 26 以上） | [packages.sury.org](https://packages.sury.org/php/) | 8.5, 7.3, 7.4, 8.2, 8.3 |
+| 25 以下（24.04 など） | **ondrej/php** PPA | 8.3, 7.4 |
 
-26.04 では sury 全体の優先度を下げ（Pin-Priority 100）、`php-common` と **8.5 / 7.3 / 7.4 / 8.2 / 8.3** の sury 版だけ 500 に pin する。`domains.yml` の `php_version` は `php${version}-fpm` のソケットにそのまま渡される。
+Ubuntu 26 以降では sury 全体の優先度を下げ（Pin-Priority 100）、`php-common` と **8.5 / 7.3 / 7.4 / 8.2 / 8.3** の sury 版だけ 500 に pin する。apt の suite 名はその時点のコードネーム（例: resolute）を使う。`domains.yml` の `php_version` は `php${version}-fpm` のソケットにそのまま渡される。
 
 ### 2. Nginx のバーチャルホスト設定
 
@@ -84,7 +84,13 @@ chmod 644 /root/cobaco_config/domains.yml
 |------|------|
 | **`/etc/letsencrypt/live/<ドメイン名>/`** | `fullchain.pem` / `privkey.pem`（certbot が管理） |
 
-`domains.yml` で `ssl: true` のとき、**初回のみ** `add-domain.sh` が `certbot --nginx` で証明書を取得する。証明書が既にあるドメインは `*-ssl.conf.tmpl` で HTTPS を再生成し、**certbot --nginx は再実行しない**（Basic 認証行が certbot 側で消えるのを防ぐ）。証明書の更新は OS の **certbot タイマー**（例: `certbot.timer`）に任せ、cobaco 専用の更新スクリプトはない。
+`domains.yml` で `ssl: true` のとき、`add-domain.sh` が `certbot --nginx` で証明書を取得する。証明書に載せる名前は **`name`（apex）と `ssl_subdomains` に列挙した FQDN のみ**（`www.{domain}` の自動付与はしない）。`ssl_subdomains` の各要素は `*.name` 形式（例: `api.example.com`）とし、同じ vhost（同じドキュメントルート）の別名として Nginx の `server_name` にも反映される。別サイトとして運用するホストは `domains` の別エントリにする。
+
+`www_redirect: true` かつ `ssl: true` のときは、`ssl_subdomains` に **`www.{domain}` を必ず含める**（`server_name` に www を足すため）。
+
+証明書が既にあり、`name` と `ssl_subdomains` の名前がすべて SAN に含まれるドメインは `*-ssl.conf.tmpl` で HTTPS を再生成し、**certbot --nginx は再実行しない**（Basic 認証行が certbot 側で消えるのを防ぐ）。SAN に不足がある場合のみ `certbot --nginx --expand` で追加入力する。YAML から外した名前が証明書に残っていても cobaco は自動削除しない（警告のみ）。証明書の更新は OS の **certbot タイマー**（例: `certbot.timer`）に任せ、cobaco 専用の更新スクリプトはない。
+
+本番の `/root/cobaco_config/domains.yml` を `www_redirect: true` で SSL 利用している場合、`ssl_subdomains` に `www.{domain}` を追記してから `add-domain.sh` を実行する。
 
 ---
 

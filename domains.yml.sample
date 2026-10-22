@@ -12,12 +12,16 @@
 #   name         : ドメイン名 (必須)
 #   type         : "php" または "nodejs" (必須)
 #   php_version  : "8.5" / "8.3" / "8.2" / "7.4" / "7.3" など (type: php のとき必須)
-#                  Ubuntu 26.04 の PHP 8.5 / 7.3 / 7.4 / 8.2 / 8.3 は packages.sury.org
+#                  Ubuntu 26 以降の PHP 8.5 / 7.3 / 7.4 / 8.2 / 8.3 は packages.sury.org
 #                  24.04 は公式最新の 8.3 と 7.4（ondrej/php PPA）
 #   port         : Node.js アプリのリッスンポート (type: nodejs のとき必須)
 #   pm2_name     : PM2 プロセス名 (type: nodejs のとき必須)
-#   www_redirect : true の場合 www.{domain} → {domain} へリダイレクト (省略時: false)
-#   ssl          : true の場合 Let's Encrypt で証明書取得 (省略時: false)
+#   www_redirect   : true の場合 server_name に www.{domain} を追加 (省略時: false)
+#   ssl            : true の場合 Let's Encrypt で証明書取得 (省略時: false)
+#   ssl_subdomains : ssl: true のとき、証明書と server_name に載せる追加 FQDN の配列 (省略可)
+#                    各要素は *.name 形式 (例: api.example.com)。apex (name 自体) は不要
+#                    www_redirect: true かつ ssl: true のときは www.{domain} を必ず含める
+#                    別名は同じ vhost (同じドキュメントルート) で応答する
 #   basic_auth   : サイト全体のベーシック認証 (省略時: 無効)
 #     title      : 認証ダイアログに表示するタイトル (必須)
 #     users      : ユーザー一覧 (1 人以上)
@@ -30,6 +34,10 @@ domains:
     php_version: "8.5"
     www_redirect: true
     ssl: true
+    ssl_subdomains:
+      - www.example.com
+      - api.example.com
+      - blog.example.com
 
   - name: staging.example.com
     type: php
