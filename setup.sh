@@ -117,6 +117,27 @@ success "Nginx の設定完了"
 # ─────────────────────────────────────────────
 # PHP マルチバージョン
 # ─────────────────────────────────────────────
+install_php73_fpm() {
+    if ! apt-cache show php7.3-fpm &>/dev/null; then
+        error "PHP 7.3 (php7.3-fpm) が利用できません。Ubuntu ${UBUNTU_VERSION} (${UBUNTU_CODENAME}) 向けのリポジトリを確認してください。"
+        exit 1
+    fi
+    info "PHP 7.3 をインストール中..."
+    apt-get install -y -qq \
+        php7.3-fpm \
+        php7.3-mysql \
+        php7.3-curl \
+        php7.3-mbstring \
+        php7.3-xml \
+        php7.3-zip \
+        php7.3-gd \
+        php7.3-bcmath \
+        php7.3-opcache
+    systemctl enable php7.3-fpm
+    systemctl start php7.3-fpm
+    success "PHP 7.3 のインストール完了"
+}
+
 install_php74_fpm() {
     if ! apt-cache show php7.4-fpm &>/dev/null; then
         error "PHP 7.4 (php7.4-fpm) が利用できません。Ubuntu ${UBUNTU_VERSION} (${UBUNTU_CODENAME}) 向けのリポジトリを確認してください。"
@@ -138,10 +159,57 @@ install_php74_fpm() {
     success "PHP 7.4 のインストール完了"
 }
 
-if [[ "$UBUNTU_CODENAME" == "resolute" ]]; then
-    # Ubuntu 26.04: 公開サイト用 PHP 8.5 は公式、レガシー用 PHP 7.4 は packages.sury.org
-    info "PHP 8.5 (Ubuntu 公式) をインストール中..."
+install_php82_fpm() {
+    if ! apt-cache show php8.2-fpm &>/dev/null; then
+        error "PHP 8.2 (php8.2-fpm) が利用できません。Ubuntu ${UBUNTU_VERSION} (${UBUNTU_CODENAME}) 向けのリポジトリを確認してください。"
+        exit 1
+    fi
+    info "PHP 8.2 をインストール中..."
     apt-get install -y -qq \
+        php8.2-fpm \
+        php8.2-mysql \
+        php8.2-curl \
+        php8.2-mbstring \
+        php8.2-xml \
+        php8.2-zip \
+        php8.2-intl \
+        php8.2-gd \
+        php8.2-bcmath
+    systemctl enable php8.2-fpm
+    systemctl start php8.2-fpm
+    success "PHP 8.2 のインストール完了"
+}
+
+install_php83_fpm() {
+    if ! apt-cache show php8.3-fpm &>/dev/null; then
+        error "PHP 8.3 (php8.3-fpm) が利用できません。Ubuntu ${UBUNTU_VERSION} (${UBUNTU_CODENAME}) 向けのリポジトリを確認してください。"
+        exit 1
+    fi
+    info "PHP 8.3 をインストール中..."
+    apt-get install -y -qq \
+        php8.3-fpm \
+        php8.3-mysql \
+        php8.3-curl \
+        php8.3-mbstring \
+        php8.3-xml \
+        php8.3-zip \
+        php8.3-intl \
+        php8.3-gd \
+        php8.3-bcmath
+    systemctl enable php8.3-fpm
+    systemctl start php8.3-fpm
+    success "PHP 8.3 のインストール完了"
+}
+
+install_php85_fpm() {
+    if ! apt-cache show php8.5-fpm &>/dev/null; then
+        error "PHP 8.5 (php8.5-fpm) が利用できません。Ubuntu ${UBUNTU_VERSION} (${UBUNTU_CODENAME}) 向けのリポジトリを確認してください。"
+        exit 1
+    fi
+    info "PHP 8.5 をインストール中..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+        -o Dpkg::Options::=--force-confdef \
+        -o Dpkg::Options::=--force-confold \
         php8.5-fpm \
         php8.5-mysql \
         php8.5-curl \
@@ -154,8 +222,11 @@ if [[ "$UBUNTU_CODENAME" == "resolute" ]]; then
     systemctl enable php8.5-fpm
     systemctl start php8.5-fpm
     success "PHP 8.5 のインストール完了"
+}
 
-    info "packages.sury.org (PHP 7.4) を追加中..."
+if [[ "$UBUNTU_CODENAME" == "resolute" ]]; then
+    # Ubuntu 26.04: PHP 8.5 / 7.3 / 7.4 / 8.2 / 8.3 は packages.sury.org
+    info "packages.sury.org (PHP 8.5 / 7.3 / 7.4 / 8.2 / 8.3) を追加中..."
     curl -sSLo /tmp/debsuryorg-archive-keyring.deb \
         https://packages.sury.org/debsuryorg-archive-keyring.deb
     dpkg -i /tmp/debsuryorg-archive-keyring.deb
@@ -171,7 +242,23 @@ Package: php-common
 Pin: origin packages.sury.org
 Pin-Priority: 500
 
+Package: php7.3*
+Pin: origin packages.sury.org
+Pin-Priority: 500
+
 Package: php7.4*
+Pin: origin packages.sury.org
+Pin-Priority: 500
+
+Package: php8.2*
+Pin: origin packages.sury.org
+Pin-Priority: 500
+
+Package: php8.3*
+Pin: origin packages.sury.org
+Pin-Priority: 500
+
+Package: php8.5*
 Pin: origin packages.sury.org
 Pin-Priority: 500
 EOF
@@ -179,7 +266,11 @@ EOF
     apt-get update -qq
     success "packages.sury.org の追加完了"
 
+    install_php85_fpm
+    install_php73_fpm
     install_php74_fpm
+    install_php82_fpm
+    install_php83_fpm
 else
     info "ondrej/php PPA を追加中..."
     # --no-update: apt-get update を自動実行させない (suite 書き換え後に手動で実行する)
@@ -288,6 +379,15 @@ ufw --force enable
 success "ファイアウォール設定完了"
 
 # ─────────────────────────────────────────────
+# 本番用設定ディレクトリ (Git 作業ツリー外)
+# ─────────────────────────────────────────────
+COBACO_CONFIG_DIR="/root/cobaco_config"
+if [[ ! -d "$COBACO_CONFIG_DIR" ]]; then
+    mkdir -m 755 "$COBACO_CONFIG_DIR"
+    success "設定ディレクトリを作成: ${COBACO_CONFIG_DIR}"
+fi
+
+# ─────────────────────────────────────────────
 # 完了メッセージ
 # ─────────────────────────────────────────────
 echo ""
@@ -296,7 +396,8 @@ echo -e "${GREEN}  セットアップが完了しました!${NC}"
 echo -e "${GREEN}======================================${NC}"
 echo ""
 echo "次のステップ:"
-echo "  1. domains.yml にドメインを追加する"
+echo "  1. domains.yml.sample を ${COBACO_CONFIG_DIR}/domains.yml にコピーして編集する"
+echo "     (deploy が読めるよう: chmod 711 /root && chmod 644 ${COBACO_CONFIG_DIR}/domains.yml)"
 echo "  2. bash add-domain.sh <ドメイン名> を実行する (root)"
 echo ""
 info "インストール済みバージョン:"
@@ -310,7 +411,3 @@ php7.4 --version 2>/dev/null | head -1 || warn "PHP 7.4 は未インストール
 node --version 2>/dev/null || true
 pm2 --version 2>/dev/null || true
 mariadb --version 2>/dev/null || true
-if [[ "$UBUNTU_CODENAME" == "resolute" ]]; then
-    echo ""
-    warn "PHP 8.5 は universe コンポーネントです。標準サポート期間を超えたセキュリティ更新を確実に受けるには Ubuntu Pro の接続を検討してください。"
-fi

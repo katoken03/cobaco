@@ -60,7 +60,9 @@ tee /etc/sudoers.d/deploy << 'EOF'
 deploy ALL=(ALL) NOPASSWD: \
     /bin/systemctl reload php8.5-fpm, \
     /bin/systemctl reload php8.3-fpm, \
+    /bin/systemctl reload php8.2-fpm, \
     /bin/systemctl reload php7.4-fpm, \
+    /bin/systemctl reload php7.3-fpm, \
     /bin/systemctl reload nginx
 EOF
 chmod 440 /etc/sudoers.d/deploy

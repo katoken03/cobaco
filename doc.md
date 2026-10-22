@@ -12,11 +12,33 @@ cobaco では **宣言（YAML）・Nginx 設定・サイトの実体** が分か
 
 | 場所 | 内容 |
 |------|------|
-| **`domains.yml`** | ドメイン名・`type`・PHP 版・SSL・`basic_auth` など。cobaco リポジトリ直下（サーバーでは `setup.sh` / `add-domain.sh` と同じディレクトリ、例: `/root/cobaco/domains.yml`） |
+| **`/root/cobaco_config/domains.yml`** | 本番の正。ドメイン名・`type`・PHP 版・SSL・`basic_auth` など。Git 作業ツリー外のため `git clone` / `pull` の影響を受けない |
+| **`domains.yml`**（リポジトリ直下） | 未移行の本番、またはローカル開発用。`.gitignore` 対象。本番パスが無いときのみ使用 |
+| **`domains.yml.sample`** | 雛形（Git 管理）。初回はこれをコピーして編集する |
 
-`add-domain.sh` / `deploy.sh` は **スクリプト自身のディレクトリ** の `domains.yml` を読む。
+`add-domain.sh` / `deploy.sh` / `cobaco list` は **`/root/cobaco_config/domains.yml` を優先**し、無ければリポジトリ直下の `domains.yml` を読む。両方ある場合は本番パスのみ使い、直下のファイルは無視する。
+
+本番では root が `/root/cobaco_config/domains.yml` を編集する。`deploy` は読み取りのみ（`deploy.sh` が type 等を参照）。`deploy` が読めるように **`chmod 711 /root`** と **`chmod 644 /root/cobaco_config/domains.yml`** を設定する（`/root` は一覧不可、パスを知っていればファイルに到達可能）。`setup.sh` は `/root/cobaco_config` を `755` で作成する。
+
+既存の `/root/cobaco/domains.yml` から移行する例:
+
+```bash
+chmod 711 /root
+mkdir -m 755 /root/cobaco_config
+mv /root/cobaco/domains.yml /root/cobaco_config/domains.yml
+chmod 644 /root/cobaco_config/domains.yml
+```
 
 ここを編集して `add-domain.sh` を実行すると、Nginx 設定や Let's Encrypt の取得が行われる。
+
+### PHP バージョン（マルチ FPM）
+
+| Ubuntu | 入手元 | `setup.sh` が入れる版（例） |
+|--------|--------|------------------------------|
+| 26.04 (resolute) | [packages.sury.org](https://packages.sury.org/php/) | 8.5, 7.3, 7.4, 8.2, 8.3 |
+| 24.04 など | **ondrej/php** PPA | 8.3, 7.4 |
+
+26.04 では sury 全体の優先度を下げ（Pin-Priority 100）、`php-common` と **8.5 / 7.3 / 7.4 / 8.2 / 8.3** の sury 版だけ 500 に pin する。`domains.yml` の `php_version` は `php${version}-fpm` のソケットにそのまま渡される。
 
 ### 2. Nginx のバーチャルホスト設定
 
@@ -70,7 +92,7 @@ cobaco では **宣言（YAML）・Nginx 設定・サイトの実体** が分か
 
 | 知りたいこと | 見る場所 |
 |--------------|----------|
-| ドメイン一覧・PHP 版・SSL・Basic 認証 | `domains.yml` |
+| ドメイン一覧・PHP 版・SSL・Basic 認証 | `/root/cobaco_config/domains.yml`（またはリポジトリ直下の `domains.yml`） |
 | 実際の vhost 設定 | `/etc/nginx/sites-available/<ドメイン>` |
 | 公開 Web ファイル（PHP） | `/var/www/<ドメイン>/public/` |
 | Basic 認証の htpasswd | `/etc/nginx/htpasswd/<ドメイン>` |

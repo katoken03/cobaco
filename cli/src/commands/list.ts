@@ -1,7 +1,6 @@
-import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { readFileSync } from 'fs';
 import { parse } from 'yaml';
-import { SCRIPT_DIR } from '../lib/shell';
+import { resolveDomainsFile } from '../lib/shell';
 
 type Domain = {
   name: string;
@@ -58,13 +57,20 @@ export async function list(args: string[]): Promise<void> {
     return;
   }
 
-  const domainsPath = join(SCRIPT_DIR, 'domains.yml');
-
-  if (!existsSync(domainsPath)) {
-    console.error(`Error: domains.yml not found at ${domainsPath}`);
-    console.error('Copy domains.yml.sample to domains.yml and edit it.');
+  const resolved = resolveDomainsFile();
+  if (!resolved.ok) {
+    console.error('Error: domains.yml not found. Place it at one of:');
+    console.error(`  ${resolved.systemPath}`);
+    console.error(`  ${resolved.localPath}`);
+    console.error(`Copy ${resolved.samplePath} and edit it.`);
     process.exit(1);
   }
+  if (resolved.ignoredLocal) {
+    console.warn(
+      `Warning: ignoring domains.yml in repo; using ${resolved.path}`,
+    );
+  }
+  const domainsPath = resolved.path;
 
   const content = readFileSync(domainsPath, 'utf8');
   const parsed = parse(content) as { domains: Domain[] };

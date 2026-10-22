@@ -1,12 +1,19 @@
 # domains.yml
 # このファイルで全ドメインを宣言的に管理します。
-# add-domain.sh がこのファイルを読み込んで Nginx 設定・SSL などを自動構成します。
+# add-domain.sh / deploy.sh が読み込んで Nginx 設定・SSL・デプロイ先を自動構成します。
+#
+# 配置:
+#   本番 VPS  : /root/cobaco_config/domains.yml（Git 外。clone/pull しても残る）
+#   ローカル等: リポジトリ直下の domains.yml（.gitignore）
+# 初回: この sample をコピーして編集する。
+# 本番で deploy が読む場合: chmod 711 /root && chmod 644 /root/cobaco_config/domains.yml
 #
 # フィールド説明:
 #   name         : ドメイン名 (必須)
 #   type         : "php" または "nodejs" (必須)
-#   php_version  : "8.5" / "8.3" / "7.4" など (type: php のとき必須)
-#                  Ubuntu 26.04 の公開サイトは 8.5、24.04 は公式最新の 8.3
+#   php_version  : "8.5" / "8.3" / "8.2" / "7.4" / "7.3" など (type: php のとき必須)
+#                  Ubuntu 26.04 の PHP 8.5 / 7.3 / 7.4 / 8.2 / 8.3 は packages.sury.org
+#                  24.04 は公式最新の 8.3 と 7.4（ondrej/php PPA）
 #   port         : Node.js アプリのリッスンポート (type: nodejs のとき必須)
 #   pm2_name     : PM2 プロセス名 (type: nodejs のとき必須)
 #   www_redirect : true の場合 www.{domain} → {domain} へリダイレクト (省略時: false)
@@ -15,7 +22,7 @@
 #     title      : 認証ダイアログに表示するタイトル (必須)
 #     users      : ユーザー一覧 (1 人以上)
 #       id       : ログイン ID (必須)
-#       password : パスワード (必須。domains.yml は .gitignore 対象のため git に含めない)
+#       password : パスワード (必須。実ファイルは git に含めない)
 
 domains:
   - name: example.com

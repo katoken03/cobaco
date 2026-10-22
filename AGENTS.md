@@ -5,7 +5,7 @@ Ubuntu VPS 上で複数ドメインを運用するための、再現性のある
 ## 概要
 
 - **Nginx** をリバースプロキシとして使い、複数ドメインのバーチャルホストを管理する
-- **ドメインごとに PHP バージョン**（Ubuntu 26.04: 8.5 / 7.4、24.04: 8.3 / 7.4）を切り替えられる（PHP-FPM マルチバージョン）
+- **ドメインごとに PHP バージョン**（Ubuntu 26.04: 8.5 / 8.3 / 8.2 / 7.4 / 7.3、24.04: 8.3 / 7.4）を切り替えられる（PHP-FPM マルチバージョン）
 - **Node.js / Next.js アプリ**は PM2 で管理し、Nginx がリバースプロキシする
 - **`domains.yml`** にドメインを宣言的に記述し、スクリプトで自動構成する
 - 同じファイル群を別の VPS にコピーして実行すれば、同一構成を再現できる
@@ -20,7 +20,7 @@ cobaco/
 ├── setup.sh              # 初回サーバーセットアップ (Nginx・PHP・PM2・MariaDB 等)
 ├── add-domain.sh         # ドメイン追加・Nginx 設定生成
 ├── deploy.sh             # git pull + ビルド + 再起動
-├── domains.yml           # ドメイン宣言ファイル (主要設定ファイル)
+├── domains.yml.sample    # ドメイン宣言の雛形
 └── templates/
     ├── nginx-php.conf.tmpl         # PHP（HTTP のみ）
     ├── nginx-php-ssl.conf.tmpl     # PHP（HTTPS・証明書あり）
@@ -36,7 +36,8 @@ cobaco/
 # 1. root で SSH 接続してセットアップ
 bash setup.sh
 
-# 2. domains.yml にドメインを追加してから適用
+# 2. 本番: /root/cobaco_config/domains.yml にドメインを追加してから適用
+#    (domains.yml.sample をコピー。deploy が読めるよう chmod 711 /root && chmod 644 ファイル)
 bash add-domain.sh example.com
 
 # 3. デプロイ (deploy ユーザーで実行)
