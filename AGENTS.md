@@ -15,6 +15,7 @@ Ubuntu VPS 上で複数ドメインを運用するための、再現性のある
 ```
 cobaco/
 ├── AGENTS.md             # このファイル。プロジェクト概要と作業指示のインデックス
+├── doc.md                # 仕様・パス・構成の説明（仕様変更時は必ず更新）
 ├── SETUP_USERS.md        # ユーザー・SSH セットアップ手順 (root / deploy)
 ├── setup.sh              # 初回サーバーセットアップ (Nginx・PHP・PM2・MariaDB 等)
 ├── add-domain.sh         # ドメイン追加・Nginx 設定生成
@@ -48,6 +49,10 @@ bash deploy.sh example.com
 | `deploy` | デプロイ専用。`deploy.sh` のみ実行する。sudo は `systemctl reload` のみ |
 
 ## 作業指示ドキュメント
+
+### [doc.md](./doc.md) — 仕様・構成ドキュメント
+
+バーチャルホストの宣言（`domains.yml`）、Nginx 設定、ドキュメントルート、SSL 証明書のパスなどを記載する。**スクリプトや運用仕様を追加・変更したときは、`doc.md` も同じ PR / コミットで更新すること。**
 
 ### [SETUP_USERS.md](./SETUP_USERS.md) — ユーザー・SSH セットアップ手順
 
