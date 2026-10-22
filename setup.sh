@@ -71,6 +71,7 @@ apt-get install -y -qq \
     software-properties-common \
     ufw \
     nginx \
+    apache2-utils \
     mariadb-server \
     certbot \
     python3-certbot-nginx

@@ -33,6 +33,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOMAINS_FILE="${SCRIPT_DIR}/domains.yml"
 TEMPLATES_DIR="${SCRIPT_DIR}/templates"
+HTPASSWD_DIR="/etc/nginx/htpasswd"
 
 # ─────────────────────────────────────────────
 # 引数の解析
@@ -76,6 +77,210 @@ fi
 [[ -d "$TEMPLATES_DIR" ]] || die "templates/ ディレクトリが見つかりません: ${TEMPLATES_DIR}"
 command -v yq    &>/dev/null || die "yq がインストールされていません。先に setup.sh を実行してください。"
 command -v nginx &>/dev/null || die "nginx がインストールされていません。先に setup.sh を実行してください。"
+
+# ─────────────────────────────────────────────
+# ベーシック認証ヘルパー
+# ─────────────────────────────────────────────
+basic_auth_enabled() {
+    local domain="$1"
+    local title
+    title=$(yq e ".domains[] | select(.name == \"${domain}\") | .basic_auth.title" "$DOMAINS_FILE")
+    [[ -n "$title" && "$title" != "null" ]]
+}
+
+escape_nginx_auth_basic_title() {
+    local title="$1"
+    title="${title//\\/\\\\}"
+    title="${title//\"/\\\"}"
+    printf '%s' "$title"
+}
+
+generate_basic_auth_nginx_block() {
+    local domain="$1"
+
+    if ! basic_auth_enabled "$domain"; then
+        return 0
+    fi
+
+    local title escaped_title htpasswd_file
+    title=$(yq e ".domains[] | select(.name == \"${domain}\") | .basic_auth.title" "$DOMAINS_FILE")
+    escaped_title=$(escape_nginx_auth_basic_title "$title")
+    htpasswd_file="${HTPASSWD_DIR}/${domain}"
+
+    printf '    auth_basic "%s";\n    auth_basic_user_file %s;\n' "$escaped_title" "$htpasswd_file"
+}
+
+validate_basic_auth_config() {
+    local domain="$1"
+
+    local basic_auth_node
+    basic_auth_node=$(yq e ".domains[] | select(.name == \"${domain}\") | .basic_auth" "$DOMAINS_FILE")
+    if [[ "$basic_auth_node" == "null" ]]; then
+        return 0
+    fi
+
+    local title count dup id password i
+    title=$(yq e ".domains[] | select(.name == \"${domain}\") | .basic_auth.title" "$DOMAINS_FILE")
+    [[ -n "$title" && "$title" != "null" ]] || die "[${domain}] basic_auth を使う場合 basic_auth.title は必須です。"
+    [[ "$title" != *$'\n'* ]] || die "[${domain}] basic_auth.title に改行は使えません。"
+
+    count=$(yq e ".domains[] | select(.name == \"${domain}\") | .basic_auth.users | length" "$DOMAINS_FILE")
+    [[ "$count" =~ ^[0-9]+$ && "$count" -ge 1 ]] || die "[${domain}] basic_auth.users は 1 人以上指定してください。"
+
+    dup=$(yq -r ".domains[] | select(.name == \"${domain}\") | .basic_auth.users[].id" "$DOMAINS_FILE" | sort | uniq -d)
+    [[ -z "$dup" ]] || die "[${domain}] basic_auth.users の id が重複しています: ${dup}"
+
+    for ((i = 0; i < count; i++)); do
+        id=$(yq -r ".domains[] | select(.name == \"${domain}\") | .basic_auth.users[${i}].id" "$DOMAINS_FILE")
+        password=$(yq -r ".domains[] | select(.name == \"${domain}\") | .basic_auth.users[${i}].password" "$DOMAINS_FILE")
+
+        [[ -n "$id" && "$id" != "null" ]] || die "[${domain}] basic_auth.users[${i}].id は必須です。"
+        [[ "$id" =~ ^[A-Za-z0-9._@+-]+$ ]] || die "[${domain}] basic_auth.users[${i}].id の形式が不正です。(指定値: ${id})"
+
+        [[ -n "$password" && "$password" != "null" ]] || die "[${domain}] basic_auth.users[${i}].password は必須です。"
+        [[ "$password" != *$'\n'* ]] || die "[${domain}] basic_auth.users[${i}].password に改行は使えません。"
+    done
+
+    if [[ "$DRY_RUN" == false ]]; then
+        command -v htpasswd &>/dev/null || die "[${domain}] htpasswd が見つかりません。apt install apache2-utils を実行してください。"
+    fi
+}
+
+htpasswd_matches_declaration() {
+    local domain="$1"
+    local htpasswd_file="$2"
+    local count i id password declared existing
+
+    count=$(yq e ".domains[] | select(.name == \"${domain}\") | .basic_auth.users | length" "$DOMAINS_FILE")
+    declared=$(yq -r ".domains[] | select(.name == \"${domain}\") | .basic_auth.users[].id" "$DOMAINS_FILE" | sort)
+    existing=$(cut -d: -f1 "$htpasswd_file" | sort)
+    [[ "$declared" == "$existing" ]] || return 1
+
+    for ((i = 0; i < count; i++)); do
+        id=$(yq -r ".domains[] | select(.name == \"${domain}\") | .basic_auth.users[${i}].id" "$DOMAINS_FILE")
+        password=$(yq -r ".domains[] | select(.name == \"${domain}\") | .basic_auth.users[${i}].password" "$DOMAINS_FILE")
+        if ! printf '%s' "$password" | htpasswd -v -i "$htpasswd_file" "$id" &>/dev/null; then
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+ensure_htpasswd_permissions() {
+    local htpasswd_file="$1"
+    local owner mode
+
+    owner=$(stat -c '%U:%G' "$htpasswd_file")
+    mode=$(stat -c '%a' "$htpasswd_file")
+
+    if [[ "$owner" != "root:www-data" ]]; then
+        chown root:www-data "$htpasswd_file"
+    fi
+    if [[ "$mode" != "640" ]]; then
+        chmod 640 "$htpasswd_file"
+    fi
+}
+
+sync_basic_auth_htpasswd() {
+    local domain="$1"
+    local htpasswd_file="${HTPASSWD_DIR}/${domain}"
+
+    if ! basic_auth_enabled "$domain"; then
+        if [[ -f "$htpasswd_file" ]]; then
+            rm -f "$htpasswd_file"
+            info "ベーシック認証ファイルを削除: ${htpasswd_file}"
+        fi
+        return 0
+    fi
+
+    if [[ "$DRY_RUN" == true ]]; then
+        return 0
+    fi
+
+    mkdir -p "$HTPASSWD_DIR"
+
+    local count i id password tmp needs_update=false
+    count=$(yq e ".domains[] | select(.name == \"${domain}\") | .basic_auth.users | length" "$DOMAINS_FILE")
+
+    if [[ ! -f "$htpasswd_file" ]] || ! htpasswd_matches_declaration "$domain" "$htpasswd_file"; then
+        needs_update=true
+    fi
+
+    if [[ "$needs_update" == true ]]; then
+        tmp=$(mktemp "${HTPASSWD_DIR}/.${domain}.XXXXXX")
+        rm -f "$tmp"
+
+        for ((i = 0; i < count; i++)); do
+            id=$(yq -r ".domains[] | select(.name == \"${domain}\") | .basic_auth.users[${i}].id" "$DOMAINS_FILE")
+            password=$(yq -r ".domains[] | select(.name == \"${domain}\") | .basic_auth.users[${i}].password" "$DOMAINS_FILE")
+            if [[ "$i" -eq 0 ]]; then
+                printf '%s' "$password" | htpasswd -B -c -i "$tmp" "$id"
+            else
+                printf '%s' "$password" | htpasswd -B -i "$tmp" "$id"
+            fi
+        done
+
+        mv "$tmp" "$htpasswd_file"
+        chown root:www-data "$htpasswd_file"
+        chmod 640 "$htpasswd_file"
+        info "ベーシック認証ファイルを更新: ${htpasswd_file}"
+    else
+        ensure_htpasswd_permissions "$htpasswd_file"
+    fi
+}
+
+render_nginx_template() {
+    local domain="$1"
+    local rendered="$2"
+    local basic_auth_block line
+
+    basic_auth_block=$(generate_basic_auth_nginx_block "$domain")
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" == "{{BASIC_AUTH}}" ]]; then
+            if [[ -n "$basic_auth_block" ]]; then
+                printf '%s\n' "$basic_auth_block"
+            fi
+        else
+            printf '%s\n' "$line"
+        fi
+    done <<< "$rendered"
+}
+
+ssl_certificate_exists() {
+    local domain="$1"
+    [[ -f "/etc/letsencrypt/live/${domain}/fullchain.pem" ]]
+}
+
+use_ssl_nginx_template() {
+    local domain="$1"
+    local ssl
+    ssl=$(yq e ".domains[] | select(.name == \"${domain}\") | .ssl" "$DOMAINS_FILE")
+    [[ "$ssl" == "true" ]] && ssl_certificate_exists "$domain"
+}
+
+write_and_reload_nginx_config() {
+    local domain="$1"
+    local config_file="/etc/nginx/sites-available/${domain}"
+    local nginx_config
+
+    nginx_config=$(generate_nginx_config "$domain")
+    echo "$nginx_config" > "$config_file"
+    info "Nginx 設定を生成: ${config_file}"
+
+    if ! nginx -t &>/dev/null; then
+        error "Nginx 設定のシンタックスエラーが発生しました。設定を削除してロールバックします。"
+        rm -f "$config_file"
+        die "nginx -t に失敗しました。テンプレートを確認してください。"
+    fi
+
+    ln -sf "$config_file" "/etc/nginx/sites-enabled/${domain}"
+    info "sites-enabled にリンクを作成しました。"
+
+    systemctl reload nginx
+    success "Nginx をリロードしました。"
+}
 
 # ─────────────────────────────────────────────
 # ドメイン設定のバリデーション関数
@@ -126,6 +331,8 @@ validate_domain_config() {
         fi
     fi
 
+    validate_basic_auth_config "$domain"
+
     # DNS 解決確認 (警告のみ)
     if ! host "$domain" &>/dev/null 2>&1; then
         warn "[${domain}] DNS が解決できません。Let's Encrypt の証明書取得前に DNS を設定してください。"
@@ -153,26 +360,38 @@ generate_nginx_config() {
     local config_file="/etc/nginx/sites-available/${domain}"
     local tmpl_file
 
+    local rendered=""
+
     if [[ "$type" == "php" ]]; then
         php_version=$(yq e ".domains[] | select(.name == \"${domain}\") | .php_version" "$DOMAINS_FILE")
-        tmpl_file="${TEMPLATES_DIR}/nginx-php.conf.tmpl"
+        if use_ssl_nginx_template "$domain"; then
+            tmpl_file="${TEMPLATES_DIR}/nginx-php-ssl.conf.tmpl"
+        else
+            tmpl_file="${TEMPLATES_DIR}/nginx-php.conf.tmpl"
+        fi
 
-        sed \
+        rendered=$(sed \
             -e "s|{{DOMAIN}}|${domain}|g" \
             -e "s|{{WWW_ALIAS}}|${www_alias}|g" \
             -e "s|{{PHP_VERSION}}|${php_version}|g" \
-            "$tmpl_file"
+            "$tmpl_file")
 
     elif [[ "$type" == "nodejs" ]]; then
         port=$(yq e ".domains[] | select(.name == \"${domain}\") | .port" "$DOMAINS_FILE")
-        tmpl_file="${TEMPLATES_DIR}/nginx-nodejs.conf.tmpl"
+        if use_ssl_nginx_template "$domain"; then
+            tmpl_file="${TEMPLATES_DIR}/nginx-nodejs-ssl.conf.tmpl"
+        else
+            tmpl_file="${TEMPLATES_DIR}/nginx-nodejs.conf.tmpl"
+        fi
 
-        sed \
+        rendered=$(sed \
             -e "s|{{DOMAIN}}|${domain}|g" \
             -e "s|{{WWW_ALIAS}}|${www_alias}|g" \
             -e "s|{{PORT}}|${port}|g" \
-            "$tmpl_file"
+            "$tmpl_file")
     fi
+
+    render_nginx_template "$domain" "$rendered"
 }
 
 # ─────────────────────────────────────────────
@@ -206,6 +425,15 @@ apply_domain() {
         info "[DRY-RUN] ドキュメントルートを作成予定: ${webroot}"
     fi
 
+    sync_basic_auth_htpasswd "$domain"
+
+    if [[ "$DRY_RUN" == true ]] && basic_auth_enabled "$domain"; then
+        local auth_title auth_ids
+        auth_title=$(yq e ".domains[] | select(.name == \"${domain}\") | .basic_auth.title" "$DOMAINS_FILE")
+        auth_ids=$(yq -r ".domains[] | select(.name == \"${domain}\") | .basic_auth.users[].id" "$DOMAINS_FILE" | paste -sd, -)
+        info "[DRY-RUN] basic_auth title=\"${auth_title}\" users=${auth_ids} htpasswd=${HTPASSWD_DIR}/${domain}"
+    fi
+
     # Nginx 設定ファイルの生成
     local config_file="/etc/nginx/sites-available/${domain}"
     local nginx_config
@@ -220,35 +448,30 @@ apply_domain() {
         return 0
     fi
 
-    # 設定ファイルの書き込み
-    echo "$nginx_config" > "$config_file"
-    info "Nginx 設定を生成: ${config_file}"
+    write_and_reload_nginx_config "$domain"
 
-    # nginx -t でシンタックスチェック (失敗時はロールバック)
-    if ! nginx -t &>/dev/null; then
-        error "Nginx 設定のシンタックスエラーが発生しました。設定を削除してロールバックします。"
-        rm -f "$config_file"
-        die "nginx -t に失敗しました。テンプレートを確認してください。"
-    fi
-
-    # sites-enabled へのシンボリックリンク
-    ln -sf "$config_file" "/etc/nginx/sites-enabled/${domain}"
-    info "sites-enabled にリンクを作成しました。"
-
-    # Nginx リロード
-    systemctl reload nginx
-    success "Nginx をリロードしました。"
-
-    # SSL 証明書の取得
+    # SSL 証明書の取得（初回のみ certbot。証明書がある場合は cobaco テンプレートで HTTPS を管理する）
     if [[ "$ssl" == "true" ]]; then
-        local certbot_args=("--nginx" "-d" "$domain" "--non-interactive" "--agree-tos" "--email" "admin@${domain}")
-        if [[ "$www_redirect" == "true" ]]; then
-            certbot_args+=("-d" "www.${domain}")
-        fi
+        if ssl_certificate_exists "$domain"; then
+            info "SSL 証明書は既に存在します。certbot --nginx はスキップします（Basic 認証等をテンプレートで維持）。"
+        else
+            local certbot_args=("--nginx" "-d" "$domain" "--non-interactive" "--agree-tos" "--email" "admin@${domain}")
+            if [[ "$www_redirect" == "true" ]]; then
+                certbot_args+=("-d" "www.${domain}")
+            fi
 
-        info "Let's Encrypt 証明書を取得中 (${domain})..."
-        warn "※ テスト時は --staging フラグを追加することをお勧めします (レート制限回避のため)"
-        certbot "${certbot_args[@]}" && success "SSL 証明書の取得完了" || warn "SSL 証明書の取得に失敗しました。DNS 設定を確認してください。"
+            info "Let's Encrypt 証明書を取得中 (${domain})..."
+            warn "※ テスト時は --staging フラグを追加することをお勧めします (レート制限回避のため)"
+            if certbot "${certbot_args[@]}"; then
+                success "SSL 証明書の取得完了"
+                if ssl_certificate_exists "$domain"; then
+                    info "HTTPS 用 Nginx テンプレートを再適用します..."
+                    write_and_reload_nginx_config "$domain"
+                fi
+            else
+                warn "SSL 証明書の取得に失敗しました。DNS 設定を確認してください。"
+            fi
+        fi
     fi
 
     success "=== ${domain} の設定が完了しました ==="

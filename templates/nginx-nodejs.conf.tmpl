@@ -5,6 +5,7 @@ server {
     access_log /var/log/nginx/{{DOMAIN}}-access.log;
     error_log  /var/log/nginx/{{DOMAIN}}-error.log;
 
+{{BASIC_AUTH}}
     location / {
         proxy_pass http://127.0.0.1:{{PORT}};
         proxy_http_version 1.1;

@@ -11,6 +11,11 @@
 #   pm2_name     : PM2 プロセス名 (type: nodejs のとき必須)
 #   www_redirect : true の場合 www.{domain} → {domain} へリダイレクト (省略時: false)
 #   ssl          : true の場合 Let's Encrypt で証明書取得 (省略時: false)
+#   basic_auth   : サイト全体のベーシック認証 (省略時: 無効)
+#     title      : 認証ダイアログに表示するタイトル (必須)
+#     users      : ユーザー一覧 (1 人以上)
+#       id       : ログイン ID (必須)
+#       password : パスワード (必須。domains.yml は .gitignore 対象のため git に含めない)
 
 domains:
   - name: example.com
@@ -18,6 +23,17 @@ domains:
     php_version: "8.5"
     www_redirect: true
     ssl: true
+
+  - name: staging.example.com
+    type: php
+    php_version: "8.5"
+    www_redirect: false
+    ssl: true
+    basic_auth:
+      title: "Restricted"
+      users:
+        - id: admin
+          password: "change-me"
 
   - name: legacy.example.com
     type: php

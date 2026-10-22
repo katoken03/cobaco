@@ -11,6 +11,10 @@ type Domain = {
   pm2_name?: string;
   www_redirect?: boolean;
   ssl?: boolean;
+  basic_auth?: {
+    title: string;
+    users: { id: string; password: string }[];
+  };
 };
 
 type Column = {
@@ -26,6 +30,7 @@ const COLUMNS: Column[] = [
   { header: 'PM2',      value: d => d.pm2_name ?? '-' },
   { header: 'SSL',      value: d => (d.ssl ? 'yes' : 'no') },
   { header: 'WWW',      value: d => (d.www_redirect ? 'yes' : 'no') },
+  { header: 'AUTH',     value: d => (d.basic_auth?.title ? 'yes' : 'no') },
 ];
 
 function renderTable(domains: Domain[]): void {

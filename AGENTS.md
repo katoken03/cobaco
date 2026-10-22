@@ -22,8 +22,10 @@ cobaco/
 ├── deploy.sh             # git pull + ビルド + 再起動
 ├── domains.yml           # ドメイン宣言ファイル (主要設定ファイル)
 └── templates/
-    ├── nginx-php.conf.tmpl     # PHP ドメイン用 Nginx 設定テンプレート
-    └── nginx-nodejs.conf.tmpl  # Node.js ドメイン用 Nginx 設定テンプレート
+    ├── nginx-php.conf.tmpl         # PHP（HTTP のみ）
+    ├── nginx-php-ssl.conf.tmpl     # PHP（HTTPS・証明書あり）
+    ├── nginx-nodejs.conf.tmpl      # Node.js（HTTP のみ）
+    └── nginx-nodejs-ssl.conf.tmpl  # Node.js（HTTPS・証明書あり）
 ```
 
 ## 基本的な使い方
