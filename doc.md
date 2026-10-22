@@ -13,10 +13,9 @@ cobaco では **宣言（YAML）・Nginx 設定・サイトの実体** が分か
 | 場所 | 内容 |
 |------|------|
 | **`/root/cobaco_config/domains.yml`** | 本番の正。ドメイン名・`type`・PHP 版・SSL・`basic_auth` など。Git 作業ツリー外のため `git clone` / `pull` の影響を受けない |
-| **`domains.yml`**（リポジトリ直下） | 未移行の本番、またはローカル開発用。`.gitignore` 対象。本番パスが無いときのみ使用 |
 | **`domains.yml.sample`** | 雛形（Git 管理）。初回はこれをコピーして編集する |
 
-`add-domain.sh` / `deploy.sh` / `cobaco list` は **`/root/cobaco_config/domains.yml` を優先**し、無ければリポジトリ直下の `domains.yml` を読む。両方ある場合は本番パスのみ使い、直下のファイルは無視する。
+`add-domain.sh` / `deploy.sh` / `cobaco list` は **`/root/cobaco_config/domains.yml` のみ**を読む。無い場合はエラーで終了する。
 
 本番では root が `/root/cobaco_config/domains.yml` を編集する。`deploy` は読み取りのみ（`deploy.sh` が type 等を参照）。`deploy` が読めるように **`chmod 711 /root`** と **`chmod 644 /root/cobaco_config/domains.yml`** を設定する（`/root` は一覧不可、パスを知っていればファイルに到達可能）。`setup.sh` は `/root/cobaco_config` を `755` で作成する。
 
@@ -76,7 +75,7 @@ Ubuntu 26 以降では sury 全体の優先度を下げ（Pin-Priority 100）、
 |------|------|
 | **`/etc/nginx/htpasswd/<ドメイン名>`** | `apache2-utils` の `htpasswd` で生成（bcrypt）。所有者 `root:www-data`、モード `640` |
 
-パスワードは `domains.yml` に書く（`.gitignore` 対象）。`basic_auth` を削除して再適用すると htpasswd と Nginx の認証行は外れる。
+パスワードは `/root/cobaco_config/domains.yml` に書く（Git 作業ツリー外）。`basic_auth` を削除して再適用すると htpasswd と Nginx の認証行は外れる。
 
 ### 5. SSL 証明書（Let's Encrypt）
 
@@ -98,7 +97,7 @@ Ubuntu 26 以降では sury 全体の優先度を下げ（Pin-Priority 100）、
 
 | 知りたいこと | 見る場所 |
 |--------------|----------|
-| ドメイン一覧・PHP 版・SSL・Basic 認証 | `/root/cobaco_config/domains.yml`（またはリポジトリ直下の `domains.yml`） |
+| ドメイン一覧・PHP 版・SSL・Basic 認証 | `/root/cobaco_config/domains.yml` |
 | 実際の vhost 設定 | `/etc/nginx/sites-available/<ドメイン>` |
 | 公開 Web ファイル（PHP） | `/var/www/<ドメイン>/public/` |
 | Basic 認証の htpasswd | `/etc/nginx/htpasswd/<ドメイン>` |

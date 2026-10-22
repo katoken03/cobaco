@@ -15,27 +15,18 @@ export const SCRIPT_DIR = resolveScriptDir();
 const COBACO_SYSTEM_DOMAINS = '/root/cobaco_config/domains.yml';
 
 export type ResolveDomainsFileResult =
-  | { ok: true; path: string; ignoredLocal?: boolean }
-  | { ok: false; systemPath: string; localPath: string; samplePath: string };
+  | { ok: true; path: string }
+  | { ok: false; systemPath: string; samplePath: string };
 
 export function resolveDomainsFile(): ResolveDomainsFileResult {
-  const localPath = join(SCRIPT_DIR, 'domains.yml');
   const samplePath = join(SCRIPT_DIR, 'domains.yml.sample');
 
   if (existsSync(COBACO_SYSTEM_DOMAINS)) {
-    return {
-      ok: true,
-      path: COBACO_SYSTEM_DOMAINS,
-      ignoredLocal: existsSync(localPath),
-    };
-  }
-  if (existsSync(localPath)) {
-    return { ok: true, path: localPath };
+    return { ok: true, path: COBACO_SYSTEM_DOMAINS };
   }
   return {
     ok: false,
     systemPath: COBACO_SYSTEM_DOMAINS,
-    localPath,
     samplePath,
   };
 }

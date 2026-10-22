@@ -33,18 +33,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COBACO_SYSTEM_DOMAINS="/root/cobaco_config/domains.yml"
 
 resolve_domains_file() {
-    local local_file="${SCRIPT_DIR}/domains.yml"
     if [[ -f "$COBACO_SYSTEM_DOMAINS" ]]; then
         DOMAINS_FILE="$COBACO_SYSTEM_DOMAINS"
-        if [[ -f "$local_file" ]]; then
-            warn "リポジトリ直下の domains.yml は無視します。使用中: ${COBACO_SYSTEM_DOMAINS}"
-        fi
-    elif [[ -f "$local_file" ]]; then
-        DOMAINS_FILE="$local_file"
     else
-        die "domains.yml が見つかりません。次のいずれかに配置してください:
-  ${COBACO_SYSTEM_DOMAINS}
-  ${local_file}
+        die "domains.yml が見つかりません: ${COBACO_SYSTEM_DOMAINS}
 domains.yml.sample をコピーして編集してください。"
     fi
 }

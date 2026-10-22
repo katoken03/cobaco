@@ -2,9 +2,7 @@
 # このファイルで全ドメインを宣言的に管理します。
 # add-domain.sh / deploy.sh が読み込んで Nginx 設定・SSL・デプロイ先を自動構成します。
 #
-# 配置:
-#   本番 VPS  : /root/cobaco_config/domains.yml（Git 外。clone/pull しても残る）
-#   ローカル等: リポジトリ直下の domains.yml（.gitignore）
+# 配置: /root/cobaco_config/domains.yml（Git 外。clone/pull しても残る）
 # 初回: この sample をコピーして編集する。
 # 本番で deploy が読む場合: chmod 711 /root && chmod 644 /root/cobaco_config/domains.yml
 #

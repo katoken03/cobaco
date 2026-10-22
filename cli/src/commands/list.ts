@@ -59,16 +59,9 @@ export async function list(args: string[]): Promise<void> {
 
   const resolved = resolveDomainsFile();
   if (!resolved.ok) {
-    console.error('Error: domains.yml not found. Place it at one of:');
-    console.error(`  ${resolved.systemPath}`);
-    console.error(`  ${resolved.localPath}`);
+    console.error(`Error: domains.yml not found: ${resolved.systemPath}`);
     console.error(`Copy ${resolved.samplePath} and edit it.`);
     process.exit(1);
-  }
-  if (resolved.ignoredLocal) {
-    console.warn(
-      `Warning: ignoring domains.yml in repo; using ${resolved.path}`,
-    );
   }
   const domainsPath = resolved.path;
 
