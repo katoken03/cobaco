@@ -394,6 +394,30 @@ else
     warn "SETUP_USERS.md Step 2 の後、setup.sh を再実行するか、手動で pm2 startup を設定してください。"
 fi
 
+# PM2 ログローテーション (Nginx と同様 daily / 14 世代)
+mkdir -p /root/.pm2/logs
+if id cobaco &>/dev/null; then
+    mkdir -p /home/cobaco/.pm2/logs
+    chown -R cobaco:cobaco /home/cobaco/.pm2
+fi
+cat > /etc/logrotate.d/cobaco-pm2 << 'EOF'
+/root/.pm2/pm2.log
+/root/.pm2/logs/*.log
+/home/cobaco/.pm2/pm2.log
+/home/cobaco/.pm2/logs/*.log
+{
+    daily
+    rotate 14
+    maxsize 50M
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
+EOF
+success "PM2 ログローテーション設定完了 (/etc/logrotate.d/cobaco-pm2)"
+
 # ─────────────────────────────────────────────
 # MariaDB セキュリティ設定
 # ─────────────────────────────────────────────
