@@ -312,6 +312,35 @@ else
     install_php74_fpm
 fi
 
+# PHP-FPM: グループ書き込み可能なファイルを www-data が作成できるよう UMask を設定
+info "PHP-FPM の UMask=0002 を設定中..."
+for php_fpm_svc in php7.3-fpm php7.4-fpm php8.2-fpm php8.3-fpm php8.5-fpm; do
+    if systemctl list-unit-files "${php_fpm_svc}.service" 2>/dev/null | grep -q "^${php_fpm_svc}.service"; then
+        mkdir -p "/etc/systemd/system/${php_fpm_svc}.service.d"
+        cat > "/etc/systemd/system/${php_fpm_svc}.service.d/umask.conf" << 'EOF'
+[Service]
+UMask=0002
+EOF
+        info "  ${php_fpm_svc}: drop-in を配置しました"
+    fi
+done
+systemctl daemon-reload
+for php_fpm_svc in php7.3-fpm php7.4-fpm php8.2-fpm php8.3-fpm php8.5-fpm; do
+    if systemctl is-enabled "${php_fpm_svc}.service" &>/dev/null; then
+        systemctl restart "${php_fpm_svc}.service" || true
+    fi
+done
+success "PHP-FPM UMask 設定完了"
+
+# cobaco 運用ログ
+mkdir -p /var/log/cobaco
+if id cobaco &>/dev/null; then
+    chown cobaco:cobaco /var/log/cobaco
+else
+    warn "cobaco ユーザーが未作成です。/var/log/cobaco の所有者は root のままです (SETUP_USERS.md Step 2)。"
+fi
+chmod 755 /var/log/cobaco
+
 # ─────────────────────────────────────────────
 # Node.js + PM2 (nvm 経由でシステムワイドインストール)
 # ─────────────────────────────────────────────
@@ -353,10 +382,17 @@ else
     success "PM2 は既にインストール済み"
 fi
 
-# PM2 systemd スタートアップ設定
+# PM2 systemd スタートアップ設定 (cobaco ユーザー)
 info "PM2 systemd スタートアップを設定中..."
-pm2 startup systemd -u root --hp /root | tail -1 | bash || true
-success "PM2 スタートアップ設定完了"
+if id cobaco &>/dev/null; then
+    # shellcheck disable=SC2016
+    sudo -u cobaco bash -lc 'export NVM_DIR="/opt/nvm"; . "$NVM_DIR/nvm.sh"; command -v pm2 >/dev/null || npm install -g pm2'
+    sudo -u cobaco bash -lc 'export NVM_DIR="/opt/nvm"; . "$NVM_DIR/nvm.sh"; pm2 startup systemd -u cobaco --hp /home/cobaco' | tail -1 | bash || true
+    success "PM2 スタートアップ設定完了 (ユーザー: cobaco)"
+else
+    warn "cobaco ユーザーが未作成のため PM2 スタートアップをスキップしました。"
+    warn "SETUP_USERS.md Step 2 の後、setup.sh を再実行するか、手動で pm2 startup を設定してください。"
+fi
 
 # ─────────────────────────────────────────────
 # MariaDB セキュリティ設定
@@ -402,7 +438,7 @@ echo -e "${GREEN}======================================${NC}"
 echo ""
 echo "次のステップ:"
 echo "  1. domains.yml.sample を ${COBACO_CONFIG_DIR}/domains.yml にコピーして編集する"
-echo "     (deploy が読めるよう: chmod 711 /root && chmod 644 ${COBACO_CONFIG_DIR}/domains.yml)"
+echo "     (cobaco が読めるよう: chmod 711 /root && chmod 644 ${COBACO_CONFIG_DIR}/domains.yml)"
 echo "  2. bash add-domain.sh <ドメイン名> を実行する (root)"
 echo ""
 info "インストール済みバージョン:"

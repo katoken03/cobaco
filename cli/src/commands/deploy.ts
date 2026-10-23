@@ -7,7 +7,7 @@ export async function deploy(args: string[]): Promise<void> {
     console.log('       cobaco deploy --branch <branch> <domain>');
     console.log('');
     console.log('Deploy a domain (git pull + build + restart).');
-    console.log('Run as the deploy user (no sudo required).');
+    console.log('Run as the cobaco user (no sudo required).');
     console.log('');
     console.log('Options:');
     console.log('  --all              Deploy all domains defined in domains.yml');

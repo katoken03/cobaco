@@ -4,7 +4,7 @@
 #
 # 配置: /root/cobaco_config/domains.yml（Git 外。clone/pull しても残る）
 # 初回: この sample をコピーして編集する。
-# 本番で deploy が読む場合: chmod 711 /root && chmod 644 /root/cobaco_config/domains.yml
+# 本番で cobaco が読む場合: chmod 711 /root && chmod 644 /root/cobaco_config/domains.yml
 #
 # フィールド説明:
 #   name         : ドメイン名 (必須)

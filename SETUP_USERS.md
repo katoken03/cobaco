@@ -1,6 +1,8 @@
 # ユーザーセットアップ手順
 
-新規 VPS では **root** でサーバー管理を行い、デプロイ専用に **deploy** ユーザーを 1 つ作成する。SSH は接続元 IP を絞ったうえで、root ログインを**公開鍵認証のみ**許可する。
+新規 VPS では **root** でサーバー管理を行い、日常作業・デプロイ用に **cobaco** ユーザーを 1 つ作成する。SSH は接続元 IP を絞ったうえで、root ログインを**公開鍵認証のみ**許可する。
+
+ユーザーと責務の一覧は [DOC.md](./DOC.md) を参照。
 
 ## 前提条件
 
@@ -47,17 +49,17 @@ systemctl reload sshd
 
 ---
 
-## Step 2: deploy ユーザーの作成
+## Step 2: cobaco ユーザーの作成
 
-`root` で SSH ログインして実行する。
+`root` で SSH ログインして実行する。**`setup.sh` の前に**完了させること。
 
 ```bash
 # ユーザー作成 (パスワードなし)
-adduser --gecos '' --disabled-password deploy
+adduser --gecos '' --disabled-password cobaco
 
 # sudoers: systemctl reload のみ許可
-tee /etc/sudoers.d/deploy << 'EOF'
-deploy ALL=(ALL) NOPASSWD: \
+tee /etc/sudoers.d/cobaco << 'EOF'
+cobaco ALL=(ALL) NOPASSWD: \
     /bin/systemctl reload php8.5-fpm, \
     /bin/systemctl reload php8.3-fpm, \
     /bin/systemctl reload php8.2-fpm, \
@@ -65,22 +67,27 @@ deploy ALL=(ALL) NOPASSWD: \
     /bin/systemctl reload php7.3-fpm, \
     /bin/systemctl reload nginx
 EOF
-chmod 440 /etc/sudoers.d/deploy
+chmod 440 /etc/sudoers.d/cobaco
 
 # root の SSH 鍵をコピー
-mkdir -p /home/deploy/.ssh
-cp /root/.ssh/authorized_keys /home/deploy/.ssh/
-chown -R deploy:deploy /home/deploy/.ssh
-chmod 700 /home/deploy/.ssh
-chmod 600 /home/deploy/.ssh/authorized_keys
+mkdir -p /home/cobaco/.ssh
+cp /root/.ssh/authorized_keys /home/cobaco/.ssh/
+chown -R cobaco:cobaco /home/cobaco/.ssh
+chmod 700 /home/cobaco/.ssh
+chmod 600 /home/cobaco/.ssh/authorized_keys
 
-# /var/www/ の所有者を deploy に設定
+# /var/www/ の所有者を cobaco に設定
 mkdir -p /var/www
-chown deploy:www-data /var/www
+chown cobaco:www-data /var/www
 chmod 755 /var/www
 
-# deploy を www-data グループに追加 (Nginx が読めるように)
-usermod -aG www-data deploy
+# cobaco を www-data グループに追加 (PHP が書いたファイルを cobaco が読めるように)
+usermod -aG www-data cobaco
+
+# cobaco 運用ログ (setup.sh でも作成するが、先に作っておいてもよい)
+mkdir -p /var/log/cobaco
+chown cobaco:cobaco /var/log/cobaco
+chmod 755 /var/log/cobaco
 ```
 
 ---
@@ -91,8 +98,8 @@ usermod -aG www-data deploy
 # root で管理用ログイン
 ssh -i <秘密鍵パス> root@<VPSのIPアドレス>
 
-# deploy ユーザーでログイン
-ssh -i <秘密鍵パス> deploy@<VPSのIPアドレス>
+# cobaco ユーザーでログイン
+ssh -i <秘密鍵パス> cobaco@<VPSのIPアドレス>
 
 # 許可されたコマンドは実行できる
 sudo systemctl reload nginx   # → 成功 (nginx 未インストールなら Unit not found で OK)
@@ -117,9 +124,9 @@ Host xserver_free
   TCPKeepAlive yes
   IdentitiesOnly yes
 
-# VPS - deploy (デプロイ専用)
-Host xserver_free_deploy
-  User deploy
+# VPS - cobaco (デプロイ・日常作業)
+Host xserver_free_cobaco
+  User cobaco
   Port 22
   HostName <VPSのIPアドレス>
   IdentityFile <秘密鍵パス>
@@ -134,12 +141,39 @@ Host xserver_free_deploy
 | ユーザー | sudo 権限 | 用途 |
 |---|---|---|
 | `root` | フル | サーバー管理・`setup.sh`・`add-domain.sh` の実行 |
-| `deploy` | `systemctl reload` のみ | `deploy.sh` の実行のみ |
+| `cobaco` | `systemctl reload` のみ | `deploy.sh`、サイトファイル編集、PM2 |
 
 ```
 ssh xserver_free         # root → サーバー管理
-ssh xserver_free_deploy  # deploy → デプロイのみ
+ssh xserver_free_cobaco  # cobaco → デプロイ・日常作業
 ```
+
+---
+
+## 既存 VPS: deploy から cobaco へ移行
+
+以前 `deploy` ユーザーを使っていたサーバー向け。root で実行する。
+
+```bash
+# cobaco が無ければ Step 2 と同様に作成 (deploy は残したままでも可)
+
+# ファイル所有者
+chown -R cobaco:www-data /var/www
+
+# sudoers
+rm -f /etc/sudoers.d/deploy
+# /etc/sudoers.d/cobaco は Step 2 の内容で作成済みであること
+
+# PM2 を cobaco に移す (Node サイトがある場合)
+sudo -u cobaco bash -lc 'export NVM_DIR=/opt/nvm; . "$NVM_DIR/nvm.sh"; pm2 save' || true
+sudo -u root bash -lc 'export NVM_DIR=/opt/nvm; . "$NVM_DIR/nvm.sh"; pm2 unstartup systemd' || true
+sudo -u cobaco bash -lc 'export NVM_DIR=/opt/nvm; . "$NVM_DIR/nvm.sh"; pm2 startup systemd -u cobaco --hp /home/cobaco' | tail -1 | bash
+
+# deploy の SSH 鍵・ホームを不要なら削除
+# deluser --remove-home deploy
+```
+
+移行後、`deploy` で動いていた cron や CI の SSH ユーザーを `cobaco` に変更する。
 
 ---
 

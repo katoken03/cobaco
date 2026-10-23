@@ -15,8 +15,8 @@ Ubuntu VPS 上で複数ドメインを運用するための、再現性のある
 ```
 cobaco/
 ├── AGENTS.md             # このファイル。プロジェクト概要と作業指示のインデックス
-├── doc.md                # 仕様・パス・構成の説明（仕様変更時は必ず更新）
-├── SETUP_USERS.md        # ユーザー・SSH セットアップ手順 (root / deploy)
+├── DOC.md                # 仕様・パス・構成の説明（仕様変更時は必ず更新）
+├── SETUP_USERS.md        # ユーザー・SSH セットアップ手順 (root / cobaco)
 ├── setup.sh              # 初回サーバーセットアップ (Nginx・PHP・PM2・MariaDB 等)
 ├── add-domain.sh         # ドメイン追加・Nginx 設定生成
 ├── deploy.sh             # git pull + ビルド + 再起動
@@ -31,16 +31,16 @@ cobaco/
 ## 基本的な使い方
 
 ```bash
-# 0. 初回のみ: SETUP_USERS.md に従い root SSH (鍵のみ) と deploy ユーザーを設定
+# 0. 初回のみ: SETUP_USERS.md に従い root SSH (鍵のみ) と cobaco ユーザーを設定
 
 # 1. root で SSH 接続してセットアップ
 bash setup.sh
 
 # 2. 本番: /root/cobaco_config/domains.yml にドメインを追加してから適用
-#    (domains.yml.sample をコピー。deploy が読めるよう chmod 711 /root && chmod 644 ファイル)
+#    (domains.yml.sample をコピー。cobaco が読めるよう chmod 711 /root && chmod 644 ファイル)
 bash add-domain.sh example.com
 
-# 3. デプロイ (deploy ユーザーで実行)
+# 3. デプロイ (cobaco ユーザーで実行)
 bash deploy.sh example.com
 ```
 
@@ -49,17 +49,19 @@ bash deploy.sh example.com
 | ユーザー | 役割 |
 |---|---|
 | `root` | 管理者。SSH は公開鍵のみ（接続元 IP はファイアウォール等で限定）。`setup.sh` / `add-domain.sh` を実行する |
-| `deploy` | デプロイ専用。`deploy.sh` のみ実行する。sudo は `systemctl reload` のみ |
+| `cobaco` | 日常作業・デプロイ。`deploy.sh` を実行する。sudo は `systemctl reload` のみ |
+
+詳細は [DOC.md](./DOC.md) のユーザー表を参照。
 
 ## 作業指示ドキュメント
 
-### [doc.md](./doc.md) — 仕様・構成ドキュメント
+### [DOC.md](./DOC.md) — 仕様・構成ドキュメント
 
-バーチャルホストの宣言（`domains.yml`）、Nginx 設定、ドキュメントルート、SSL 証明書のパスなどを記載する。**スクリプトや運用仕様を追加・変更したときは、`doc.md` も同じ PR / コミットで更新すること。**
+バーチャルホストの宣言（`domains.yml`）、Nginx 設定、ドキュメントルート、SSL 証明書のパスなどを記載する。**スクリプトや運用仕様を追加・変更したときは、`DOC.md` も同じ PR / コミットで更新すること。**
 
 ### [SETUP_USERS.md](./SETUP_USERS.md) — ユーザー・SSH セットアップ手順
 
-新規 VPS にこのシステムを導入する際に最初に実行する作業。root の SSH を公開鍵認証のみに設定し、デプロイ用 `deploy` ユーザーと `/var/www/` の権限を整える。**`setup.sh` を実行する前にこの手順を完了させること。**
+新規 VPS にこのシステムを導入する際に最初に実行する作業。root の SSH を公開鍵認証のみに設定し、`cobaco` ユーザーと `/var/www/` の権限を整える。**`setup.sh` を実行する前にこの手順を完了させること。**
 
 
 ## コミット時のルール

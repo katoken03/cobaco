@@ -600,7 +600,7 @@ apply_domain() {
 
     if [[ "$DRY_RUN" == false ]]; then
         mkdir -p "$webroot"
-        chown -R deploy:www-data "/var/www/${domain}"
+        chown -R cobaco:www-data "/var/www/${domain}"
         info "ドキュメントルートを作成: ${webroot}"
     else
         info "[DRY-RUN] ドキュメントルートを作成予定: ${webroot}"

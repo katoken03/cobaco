@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # deploy.sh - ドメインのデプロイスクリプト (git pull + ビルド + 再起動)
-# deploy ユーザーで実行する (sudo 不要)
+# cobaco ユーザーで実行する (sudo 不要)
 # 使い方:
 #   bash deploy.sh example.com              # 単一ドメインをデプロイ
 #   bash deploy.sh --all                    # domains.yml の全ドメインをデプロイ
@@ -23,9 +23,9 @@ warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 die()     { error "$*"; exit 1; }
 
-# root で実行されていたら警告 (deploy ユーザーで実行すべき)
+# root で実行されていたら警告 (cobaco ユーザーで実行すべき)
 if [[ $EUID -eq 0 ]]; then
-    warn "root で実行されています。deploy ユーザーで実行することを推奨します。"
+    warn "root で実行されています。cobaco ユーザーで実行することを推奨します。"
 fi
 
 # スクリプト自身のディレクトリ
