@@ -20,6 +20,10 @@
 #                    各要素は *.name 形式 (例: api.example.com)。apex (name 自体) は不要
 #                    www_redirect: true かつ ssl: true のときは www.{domain} を必ず含める
 #                    別名は同じ vhost (同じドキュメントルート) で応答する
+#   php_settings : type: php のとき任意。Web (PHP-FPM) のみに効く ini 差分
+#                  省略したキーはその php_version 共通設定のまま
+#                  例: memory_limit, upload_max_filesize, post_max_size,
+#                      max_execution_time, display_errors など (DOC.md 参照)
 #   basic_auth   : サイト全体のベーシック認証 (省略時: 無効)
 #     title      : 認証ダイアログに表示するタイトル (必須)
 #     users      : ユーザー一覧 (1 人以上)
@@ -42,6 +46,12 @@ domains:
     php_version: "8.5"
     www_redirect: false
     ssl: true
+    php_settings:
+      memory_limit: 256M
+      upload_max_filesize: 64M
+      post_max_size: 64M
+      max_execution_time: 120
+      display_errors: "Off"
     basic_auth:
       title: "Restricted"
       users:

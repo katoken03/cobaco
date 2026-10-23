@@ -1,0 +1,13 @@
+; cobaco が生成する。add-domain.sh を再実行するとこのファイルは上書きされる。
+; 正本は /root/cobaco_config/domains.yml の php_settings。
+[{{DOMAIN}}]
+user = www-data
+group = www-data
+listen = /run/php/php{{PHP_VERSION}}-fpm-{{DOMAIN}}.sock
+listen.owner = www-data
+listen.group = www-data
+pm = dynamic
+pm.max_children = 5
+pm.start_servers = 2
+pm.min_spare_servers = 1
+pm.max_spare_servers = 3

@@ -312,6 +312,59 @@ else
     install_php74_fpm
 fi
 
+# cobaco: バージョン共通 FPM ini と、ドメイン用プールがあるときの www 退避
+install_cobaco_php_fpm_common_ini() {
+    local ver="$1"
+    local src="${SCRIPT_DIR}/templates/php/${ver}/99-cobaco.ini"
+    local dest="/etc/php/${ver}/fpm/conf.d/99-cobaco.ini"
+
+    if [[ ! -f "/etc/php/${ver}/fpm/php.ini" ]]; then
+        return 0
+    fi
+    if [[ ! -f "$src" ]]; then
+        warn "PHP ${ver}: テンプレートがありません (${src})。スキップします。"
+        return 0
+    fi
+    cp "$src" "$dest"
+    chmod 644 "$dest"
+    info "  PHP ${ver}: ${dest} を配置しました"
+}
+
+retire_default_php_fpm_www_pool_if_needed() {
+    local ver="$1"
+    local pool_dir="/etc/php/${ver}/fpm/pool.d"
+    local www_conf="${pool_dir}/www.conf"
+
+    [[ -d "$pool_dir" ]] || return 0
+
+    local has_domain_pool=false
+    local f base
+    for f in "$pool_dir"/*.conf; do
+        [[ -e "$f" ]] || continue
+        base=$(basename "$f")
+        [[ "$base" == "www.conf" ]] && continue
+        has_domain_pool=true
+        break
+    done
+
+    if [[ "$has_domain_pool" == true && -f "$www_conf" ]]; then
+        mv "$www_conf" "${www_conf}.disabled"
+        info "  PHP ${ver}: www.conf を www.conf.disabled に退避しました"
+    fi
+}
+
+info "cobaco PHP 共通 ini (FPM conf.d) を配置中..."
+for php_ver in 7.3 7.4 8.2 8.3 8.5; do
+    install_cobaco_php_fpm_common_ini "$php_ver"
+    retire_default_php_fpm_www_pool_if_needed "$php_ver"
+done
+for php_fpm_svc in php7.3-fpm php7.4-fpm php8.2-fpm php8.3-fpm php8.5-fpm; do
+    if systemctl is-active --quiet "${php_fpm_svc}.service" 2>/dev/null; then
+        systemctl reload "${php_fpm_svc}.service" || true
+    fi
+done
+success "cobaco PHP 共通 ini の配置完了"
+
 # PHP-FPM: グループ書き込み可能なファイルを www-data が作成できるよう UMask を設定
 info "PHP-FPM の UMask=0002 を設定中..."
 for php_fpm_svc in php7.3-fpm php7.4-fpm php8.2-fpm php8.3-fpm php8.5-fpm; do

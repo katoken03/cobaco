@@ -467,6 +467,256 @@ write_and_reload_nginx_config() {
 }
 
 # ─────────────────────────────────────────────
+# PHP-FPM プール (サイト別)
+# ─────────────────────────────────────────────
+PHP_ADMIN_VALUE_KEYS=(
+    memory_limit
+    upload_max_filesize
+    post_max_size
+    max_execution_time
+    max_input_time
+    max_input_vars
+    error_reporting
+    date.timezone
+)
+PHP_ADMIN_FLAG_KEYS=(
+    display_errors
+    display_startup_errors
+)
+COBACO_PHP_VERSIONS=(7.3 7.4 8.2 8.3 8.5)
+
+php_pool_conf_path() {
+    local domain="$1"
+    printf '/var/www/%s/conf/php-fpm.conf' "$domain"
+}
+
+php_pool_link_path() {
+    local php_version="$1"
+    local domain="$2"
+    printf '/etc/php/%s/fpm/pool.d/%s.conf' "$php_version" "$domain"
+}
+
+php_setting_key_allowed() {
+    local key="$1"
+    local allowed
+    for allowed in "${PHP_ADMIN_VALUE_KEYS[@]}" "${PHP_ADMIN_FLAG_KEYS[@]}"; do
+        [[ "$allowed" == "$key" ]] && return 0
+    done
+    return 1
+}
+
+php_setting_is_flag() {
+    local key="$1"
+    case "$key" in
+        display_errors|display_startup_errors) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+validate_php_setting_value() {
+    local domain="$1"
+    local key="$2"
+    local value="$3"
+
+    if [[ "$value" == *$'\n'* || "$value" == *";"* ]]; then
+        die "[${domain}] php_settings.${key} に改行または ; は使えません。"
+    fi
+
+    case "$key" in
+        memory_limit|upload_max_filesize|post_max_size)
+            [[ "$value" =~ ^[0-9]+([KMG])?$ ]] \
+                || die "[${domain}] php_settings.${key} の形式が不正です: ${value}"
+            ;;
+        max_execution_time|max_input_time|max_input_vars)
+            [[ "$value" =~ ^[0-9]+$ ]] \
+                || die "[${domain}] php_settings.${key} は非負整数で指定してください: ${value}"
+            ;;
+        date.timezone)
+            [[ "$value" =~ ^[A-Za-z0-9_\/+-]+$ ]] \
+                || die "[${domain}] php_settings.date.timezone の形式が不正です: ${value}"
+            ;;
+        display_errors|display_startup_errors)
+            local lowered="${value,,}"
+            [[ "$lowered" == "on" || "$lowered" == "off" ]] \
+                || die "[${domain}] php_settings.${key} は On または Off で指定してください: ${value}"
+            ;;
+        error_reporting)
+            [[ -n "$value" ]] || die "[${domain}] php_settings.error_reporting が空です。"
+            ;;
+    esac
+}
+
+php_size_to_bytes() {
+    local value="$1"
+    local num="${value//[!0-9]/}"
+    local unit="${value//[0-9]/}"
+
+    [[ "$num" =~ ^[0-9]+$ ]] || return 1
+
+    case "$unit" in
+        G) echo $(( num * 1024 * 1024 * 1024 )) ;;
+        M) echo $(( num * 1024 * 1024 )) ;;
+        K) echo $(( num * 1024 )) ;;
+        "") echo "$num" ;;
+        *) return 1 ;;
+    esac
+}
+
+validate_php_settings() {
+    local domain="$1"
+    local settings_present
+    settings_present=$(yq e ".domains[] | select(.name == \"${domain}\") | has(\"php_settings\")" "$DOMAINS_FILE")
+    [[ "$settings_present" == "true" ]] || return 0
+
+    local settings_null
+    settings_null=$(yq e ".domains[] | select(.name == \"${domain}\") | .php_settings" "$DOMAINS_FILE")
+    if [[ "$settings_null" == "null" ]]; then
+        return 0
+    fi
+
+    local key value upload_val="" post_val="" upload_b post_b
+    while IFS= read -r key; do
+        [[ -z "$key" ]] && continue
+        php_setting_key_allowed "$key" || die "[${domain}] php_settings に未対応のキー: ${key}"
+        value=$(yq -r ".domains[] | select(.name == \"${domain}\") | .php_settings[\"${key}\"]" "$DOMAINS_FILE")
+        [[ -n "$value" && "$value" != "null" ]] || die "[${domain}] php_settings.${key} の値が空です。"
+        validate_php_setting_value "$domain" "$key" "$value"
+        [[ "$key" == "upload_max_filesize" ]] && upload_val="$value"
+        [[ "$key" == "post_max_size" ]] && post_val="$value"
+    done < <(yq -r ".domains[] | select(.name == \"${domain}\") | .php_settings | keys | .[]" "$DOMAINS_FILE" 2>/dev/null)
+
+    if [[ -n "$upload_val" && -n "$post_val" ]]; then
+        upload_b=$(php_size_to_bytes "$upload_val") || upload_b=""
+        post_b=$(php_size_to_bytes "$post_val") || post_b=""
+        if [[ -n "$upload_b" && -n "$post_b" && "$post_b" -lt "$upload_b" ]]; then
+            warn "[${domain}] post_max_size (${post_val}) が upload_max_filesize (${upload_val}) より小さいです。"
+        fi
+    fi
+}
+
+generate_php_fpm_pool_config() {
+    local domain="$1"
+    local php_version
+    php_version=$(yq e ".domains[] | select(.name == \"${domain}\") | .php_version" "$DOMAINS_FILE")
+    local tmpl="${TEMPLATES_DIR}/php-fpm-pool.conf.tmpl"
+    [[ -f "$tmpl" ]] || die "テンプレートが見つかりません: ${tmpl}"
+
+    local rendered key value flag_val settings_null
+    rendered=$(sed \
+        -e "s|{{DOMAIN}}|${domain}|g" \
+        -e "s|{{PHP_VERSION}}|${php_version}|g" \
+        "$tmpl")
+
+    settings_null=$(yq e ".domains[] | select(.name == \"${domain}\") | .php_settings" "$DOMAINS_FILE")
+    if [[ "$settings_null" != "null" && -n "$settings_null" ]]; then
+        while IFS= read -r key; do
+            [[ -z "$key" ]] && continue
+            value=$(yq -r ".domains[] | select(.name == \"${domain}\") | .php_settings[\"${key}\"]" "$DOMAINS_FILE")
+            if php_setting_is_flag "$key"; then
+                flag_val="${value,,}"
+                [[ "$flag_val" == "on" || "$flag_val" == "off" ]] || flag_val="off"
+                rendered+=$'\n'"php_admin_flag[${key}] = ${flag_val}"
+            else
+                rendered+=$'\n'"php_admin_value[${key}] = ${value}"
+            fi
+        done < <(yq -r ".domains[] | select(.name == \"${domain}\") | .php_settings | keys | .[]" "$DOMAINS_FILE" 2>/dev/null | sort)
+    fi
+
+    printf '%s\n' "$rendered"
+}
+
+retire_default_php_fpm_www_pool() {
+    local php_version="$1"
+    local www_conf="/etc/php/${php_version}/fpm/pool.d/www.conf"
+    if [[ -f "$www_conf" ]]; then
+        mv "$www_conf" "${www_conf}.disabled"
+        info "PHP ${php_version}: www.conf を www.conf.disabled に退避しました"
+    fi
+}
+
+remove_stale_php_pool_links() {
+    local domain="$1"
+    local current_version="$2"
+    local ver link ver_svc
+
+    for ver in "${COBACO_PHP_VERSIONS[@]}"; do
+        [[ "$ver" == "$current_version" ]] && continue
+        link=$(php_pool_link_path "$ver" "$domain")
+        if [[ -e "$link" ]]; then
+            rm -f "$link"
+            info "[${domain}] 古い PHP ${ver} の pool リンクを削除: ${link}"
+            ver_svc="php${ver}-fpm"
+            if systemctl is-active --quiet "$ver_svc" 2>/dev/null; then
+                systemctl reload "$ver_svc" || true
+            fi
+        fi
+    done
+}
+
+harden_site_php_conf_dir() {
+    local domain="$1"
+    local conf_dir="/var/www/${domain}/conf"
+
+    [[ -d "$conf_dir" ]] || return 0
+    chown root:root "$conf_dir"
+    chmod 755 "$conf_dir"
+    if [[ -f "${conf_dir}/php-fpm.conf" ]]; then
+        chown root:root "${conf_dir}/php-fpm.conf"
+        chmod 644 "${conf_dir}/php-fpm.conf"
+    fi
+}
+
+apply_php_fpm_pool() {
+    local domain="$1"
+    local php_version pool_file pool_link backup pool_config ver_svc
+
+    php_version=$(yq e ".domains[] | select(.name == \"${domain}\") | .php_version" "$DOMAINS_FILE")
+    pool_file=$(php_pool_conf_path "$domain")
+    pool_link=$(php_pool_link_path "$php_version" "$domain")
+    pool_config=$(generate_php_fpm_pool_config "$domain")
+
+    if [[ "$DRY_RUN" == true ]]; then
+        info "[DRY-RUN] 生成される PHP-FPM プール (${pool_file}):"
+        echo "---"
+        echo "$pool_config"
+        echo "---"
+        info "[DRY-RUN] pool.d リンク予定: ${pool_link} -> ${pool_file}"
+        return 0
+    fi
+
+    mkdir -p "/var/www/${domain}/conf"
+    backup=""
+    if [[ -f "$pool_file" ]]; then
+        backup=$(mktemp)
+        cp "$pool_file" "$backup"
+    fi
+
+    printf '%s\n' "$pool_config" > "$pool_file"
+    harden_site_php_conf_dir "$domain"
+
+    remove_stale_php_pool_links "$domain" "$php_version"
+    ln -sf "$pool_file" "$pool_link"
+
+    if ! php-fpm"${php_version}" -t 2>/dev/null; then
+        rm -f "$pool_link"
+        if [[ -n "$backup" ]]; then
+            cp "$backup" "$pool_file"
+            harden_site_php_conf_dir "$domain"
+        else
+            rm -f "$pool_file"
+        fi
+        rm -f "$backup"
+        die "[${domain}] php-fpm${php_version} -t に失敗しました。プール設定をロールバックしました。"
+    fi
+    rm -f "$backup"
+
+    retire_default_php_fpm_www_pool "$php_version"
+    ver_svc="php${php_version}-fpm"
+    systemctl reload "$ver_svc"
+    success "[${domain}] PHP ${php_version}-FPM プールを適用しました (${pool_file})"
+}
+
+# ─────────────────────────────────────────────
 # ドメイン設定のバリデーション関数
 # ─────────────────────────────────────────────
 validate_domain_config() {
@@ -486,9 +736,9 @@ validate_domain_config() {
         php_version=$(yq e ".domains[] | select(.name == \"${domain}\") | .php_version" "$DOMAINS_FILE")
         [[ -n "$php_version" && "$php_version" != "null" ]] || die "[${domain}] type: php のとき php_version は必須です。"
 
-        local socket="/run/php/php${php_version}-fpm.sock"
+        validate_php_settings "$domain"
+
         if [[ "$DRY_RUN" == false ]]; then
-            # FPM が実際に起動しているか確認
             if ! systemctl is-active --quiet "php${php_version}-fpm"; then
                 die "[${domain}] PHP ${php_version}-FPM が起動していません。\n  インストール: apt install php${php_version}-fpm && systemctl start php${php_version}-fpm"
             fi
@@ -613,6 +863,10 @@ apply_domain() {
         auth_title=$(yq e ".domains[] | select(.name == \"${domain}\") | .basic_auth.title" "$DOMAINS_FILE")
         auth_ids=$(yq -r ".domains[] | select(.name == \"${domain}\") | .basic_auth.users[].id" "$DOMAINS_FILE" | paste -sd, -)
         info "[DRY-RUN] basic_auth title=\"${auth_title}\" users=${auth_ids} htpasswd=${HTPASSWD_DIR}/${domain}"
+    fi
+
+    if [[ "$type" == "php" ]]; then
+        apply_php_fpm_pool "$domain"
     fi
 
     # Nginx 設定ファイルの生成

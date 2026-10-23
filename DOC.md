@@ -2,6 +2,33 @@
 
 詳細は [AGENTS.md](./AGENTS.md) を参照。ここでは運用上のパスとログローテーションを記載する。
 
+## PHP 設定
+
+Web (PHP-FPM) 向けの PHP 設定は次の3層に分ける。CLI (`php`, `composer`, `artisan`) にはサイト設定は効かず、`/etc/php/<ver>/cli/php.ini` を使う。
+
+| 層 | 正本 / 配置 | 責任 |
+|----|-------------|------|
+| バージョン共通 | リポジトリ `templates/php/<ver>/99-cobaco.ini` → サーバー `/etc/php/<ver>/fpm/conf.d/99-cobaco.ini` | その PHP バージョンの全 FPM プール共通。`setup.sh` がコピーする |
+| 宣言 | `/root/cobaco_config/domains.yml` の `php_settings` | サイトごとに変えたい ini の差分 |
+| サイト別 FPM プール | `/var/www/<domain>/conf/php-fpm.conf` | `add-domain.sh` が `domains.yml` から毎回生成。所有者 `root:root`。ドキュメントルートは `public/` のため Web からは読めない |
+
+PHP-FPM は `/etc/php/<ver>/fpm/php-fpm.conf` の `include=/etc/php/<ver>/fpm/pool.d/*.conf` でプールを読む。サイトの実体は `/var/www/<domain>/conf/php-fpm.conf` に置き、FPM が読めるよう `/etc/php/<ver>/fpm/pool.d/<domain>.conf` からシンボリックリンクする。
+
+Nginx の `fastcgi_pass` はサイト専用ソケット `/run/php/php<ver>-fpm-<domain>.sock` を指す。
+
+パッケージの `/etc/php/<ver>/fpm/php.ini` と `/etc/php/<ver>/cli/php.ini` は編集しない。ドメイン用プールを置いたバージョンでは、既定の `/etc/php/<ver>/fpm/pool.d/www.conf` を `www.conf.disabled` に退避する（`add-domain.sh` および `setup.sh` 再実行時）。
+
+### domains.yml の `php_settings`（任意）
+
+`php_settings` を省略したキーは、バージョン共通 ini（実質パッケージ php.ini + `99-cobaco.ini`）のまま。`php_settings` 自体を省略しても、サイト用プールと専用ソケットは作成される。
+
+| キー | FPM への出力 |
+|------|----------------|
+| `memory_limit`, `upload_max_filesize`, `post_max_size`, `max_execution_time`, `max_input_time`, `max_input_vars`, `error_reporting`, `date.timezone` | `php_admin_value[...]` |
+| `display_errors`, `display_startup_errors` | `php_admin_flag[...]` (`On` / `Off`) |
+
+`php_version` を変更したときは、古いバージョンの `pool.d/<domain>.conf` リンクを外し、新バージョンに張り直して両方の FPM を reload する。
+
 ## ログローテーション
 
 `setup.sh` 実行後、Ubuntu の `logrotate.timer`（通常は日次）で `/etc/logrotate.d/` の定義が適用される。

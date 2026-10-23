@@ -2,6 +2,12 @@
 
 Ubuntu VPS 上で複数ドメインを運用するための、再現性のあるサーバーセットアップ・管理ツール群。
 
+## Tools
+
+Use fd, not find.
+Use rg, not grep.
+
+
 ## 概要
 
 - **Nginx** をリバースプロキシとして使い、複数ドメインのバーチャルホストを管理する
@@ -25,7 +31,10 @@ cobaco/
     ├── nginx-php.conf.tmpl         # PHP（HTTP のみ）
     ├── nginx-php-ssl.conf.tmpl     # PHP（HTTPS・証明書あり）
     ├── nginx-nodejs.conf.tmpl      # Node.js（HTTP のみ）
-    └── nginx-nodejs-ssl.conf.tmpl  # Node.js（HTTPS・証明書あり）
+    ├── nginx-nodejs-ssl.conf.tmpl  # Node.js（HTTPS・証明書あり）
+    ├── php-fpm-pool.conf.tmpl      # サイト別 PHP-FPM プール
+    └── php/
+        └── <ver>/99-cobaco.ini     # バージョン共通 FPM ini (7.3 / 7.4 / 8.2 / 8.3 / 8.5)
 ```
 
 ## 基本的な使い方
