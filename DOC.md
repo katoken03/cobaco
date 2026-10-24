@@ -83,6 +83,7 @@ MariaDB のエラーは多くの構成で **syslog / journald** に出る（`log
 | 対象 | 設定ファイル | 概要 |
 |------|-------------|------|
 | PM2 | `/etc/logrotate.d/cobaco-pm2` | `setup.sh` が配置 |
+| サーバー監視 | `/etc/logrotate.d/cobaco-monitor` | `install-monitor.sh` が配置 |
 
 対象パス:
 
@@ -95,7 +96,7 @@ MariaDB のエラーは多くの構成で **syslog / journald** に出る（`log
 
 ### 運用ログディレクトリ
 
-`setup.sh` は `/var/log/cobaco` を作成し、存在すれば所有者を `cobaco:cobaco` にする。アプリやスクリプトがここに書くログは **個別の logrotate 定義が必要**（現状 cobaco リポジトリでは未提供）。PHP プールの `access.log` / `slowlog` を有効にした場合も、出力先に応じて `/etc/logrotate.d` を追加すること。
+`setup.sh` は `/var/log/cobaco` を作成し、存在すれば所有者を `cobaco:cobaco` にする。サーバー監視の実行ログは `/var/log/cobaco/monitor.log`（`install-monitor.sh` が `/etc/logrotate.d/cobaco-monitor` を配置）。その他アプリやスクリプトがここに書くログは **個別の logrotate 定義が必要**。PHP プールの `access.log` / `slowlog` を有効にした場合も、出力先に応じて `/etc/logrotate.d` を追加すること。
 
 ### 確認コマンド（root）
 
@@ -103,4 +104,53 @@ MariaDB のエラーは多くの構成で **syslog / journald** に出る（`log
 systemctl status logrotate.timer
 logrotate -d /etc/logrotate.d/cobaco-pm2   # ドライラン
 journalctl --disk-usage
+```
+
+## サーバー監視（異常通知）
+
+サイト単位ではなく **VPS 全体** を対象に、5 分おきの短いチェックでしきい値超過や侵入の兆候だけ HTTPS Webhook へ通知する。常駐エージェントやメトリクス DB は使わない。
+
+| 項目 | パス / 単位 |
+|------|-------------|
+| 設定（本番） | `/root/cobaco_config/monitor.yml`（`600`。Git 外） |
+| 雛形 | リポジトリ `monitor.yml.sample` |
+| スクリプト | リポジトリ `monitor.sh`（本番例: `/root/cobaco/monitor.sh`） |
+| 状態 | `/var/lib/cobaco/monitor/state`、ジャーナルカーソル `journal.cursor` |
+| timer | `cobaco-monitor.timer`（起動 2 分後、以降 5 分間隔） |
+| ログ | `/var/log/cobaco/monitor.log` |
+
+`webhook.url` が空の間は `monitor.sh` は何もせず終了する（ジャーナルカーソルも進めない）。
+
+### 監視内容（初期しきい値は sample 参照）
+
+**状態監視** — ALERT 時に通知、復旧で OK 通知。ALERT が続く場合は `cooldowns.alert_repeat_seconds`（既定 6 時間）ごとに再通知。
+
+- **memory**: `MemAvailable / MemTotal` が `memory_available_min_percent` 未満
+- **disk**: `/`（および `extra_mounts`）の使用率・ inode 使用率
+- **load**: 15 分ロードアベレージが `CPU 数 × load15_multiplier` 超
+- **services**: `nginx`、`mariadb`、有効な `php*-fpm` が active でない
+- **public_ports**: `0.0.0.0` / `[::]` で待ち受けする TCP のうち、SSH 実ポート・80・443 以外
+
+**イベント** — journal カーソルで増分のみ（初回有効化時はカーソルを現在位置に初期化し、過去ログは通知しない）。
+
+- OOM killer（`Out of memory` / `Killed process`）
+- SSH 成功ログイン（同一 user + IP は `ssh_success_repeat_seconds` ごと）
+- SSH 失敗が `events.ssh_fail_window_seconds` 内に `ssh_fail_min_count` 以上（収束まで再通知しない）
+- 予期しない再起動（`btime` 変化。初回は基準記録のみ）
+
+### Webhook
+
+`webhook.format`: `slack`（`{"text":...}`）、`discord`（`{"content":...}`）、`ntfy`（本文 POST + `Title` ヘッダ）。
+
+### 導入・更新（root）
+
+新規 VPS では `setup.sh` が `install-monitor.sh` を呼ぶ。既存サーバー:
+
+```bash
+cd /root/cobaco && git pull
+bash install-monitor.sh
+# /root/cobaco_config/monitor.yml に webhook.url / format を設定
+bash monitor.sh --test-notify
+bash monitor.sh --dry-run    # 送信せず通知文を標準出力
+systemctl status cobaco-monitor.timer
 ```

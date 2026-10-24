@@ -1,0 +1,37 @@
+# monitor.yml — サーバー全体の異常検知（サイト単位ではない）
+#
+# 配置: /root/cobaco_config/monitor.yml（Git 外）
+# 初回: この sample を install-monitor.sh がコピーする（既存ファイルは上書きしない）
+# 権限: chmod 600 /root/cobaco_config/monitor.yml
+#
+# Webhook URL が空の間は monitor.sh は何もせず終了する（ジャーナルカーソルも進めない）。
+
+webhook:
+  # Slack Incoming Webhook / Discord Webhook / ntfy トピック URL など
+  url: ""
+  # slack | discord | ntfy
+  format: slack
+
+thresholds:
+  # MemAvailable / MemTotal がこの % 未満で ALERT
+  memory_available_min_percent: 10
+  # ルート（および extra_mounts）の使用率がこの % 以上で ALERT
+  disk_use_max_percent: 85
+  inode_use_max_percent: 90
+  # load15 > (CPU 数 × multiplier) で ALERT
+  load15_multiplier: 2
+
+# 追加で監視するマウントポイント（省略可）
+extra_mounts: []
+#  - /var
+
+cooldowns:
+  # 同じ ALERT 状態が続くときの再通知間隔（秒）
+  alert_repeat_seconds: 21600
+  # 同一ユーザー・送信元 IP の SSH 成功ログイン通知間隔（秒）
+  ssh_success_repeat_seconds: 43200
+
+events:
+  # この秒数の窓で SSH 失敗が min_count 以上なら ALERT（収束するまで再通知しない）
+  ssh_fail_window_seconds: 300
+  ssh_fail_min_count: 50

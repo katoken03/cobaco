@@ -27,7 +27,10 @@ cobaco/
 ├── apply-php-fpm-ini.sh  # バージョン共通 FPM ini の配置と FPM reload
 ├── add-domain.sh         # ドメイン追加・Nginx 設定生成
 ├── deploy.sh             # git pull + ビルド + 再起動
+├── monitor.sh            # サーバー異常検知と Webhook 通知
+├── install-monitor.sh    # monitor の systemd timer / logrotate 配置
 ├── domains.yml.sample    # ドメイン宣言の雛形
+├── monitor.yml.sample    # サーバー監視設定の雛形
 └── templates/
     ├── nginx-php.conf.tmpl         # PHP（HTTP のみ）
     ├── nginx-php-ssl.conf.tmpl     # PHP（HTTPS・証明書あり）
