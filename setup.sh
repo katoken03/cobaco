@@ -313,22 +313,12 @@ else
 fi
 
 # cobaco: バージョン共通 FPM ini と、ドメイン用プールがあるときの www 退避
-install_cobaco_php_fpm_common_ini() {
-    local ver="$1"
-    local src="${SCRIPT_DIR}/templates/php/${ver}/99-cobaco.ini"
-    local dest="/etc/php/${ver}/fpm/conf.d/99-cobaco.ini"
-
-    if [[ ! -f "/etc/php/${ver}/fpm/php.ini" ]]; then
-        return 0
-    fi
-    if [[ ! -f "$src" ]]; then
-        warn "PHP ${ver}: テンプレートがありません (${src})。スキップします。"
-        return 0
-    fi
-    cp "$src" "$dest"
-    chmod 644 "$dest"
-    info "  PHP ${ver}: ${dest} を配置しました"
-}
+COBACO_SCRIPT_DIR="$SCRIPT_DIR"
+cobaco_info()    { info "$@"; }
+cobaco_success() { success "$@"; }
+cobaco_warn()    { warn "$@"; }
+# shellcheck source=apply-php-fpm-ini.sh
+source "${SCRIPT_DIR}/apply-php-fpm-ini.sh"
 
 retire_default_php_fpm_www_pool_if_needed() {
     local ver="$1"
@@ -358,11 +348,7 @@ for php_ver in 7.3 7.4 8.2 8.3 8.5; do
     install_cobaco_php_fpm_common_ini "$php_ver"
     retire_default_php_fpm_www_pool_if_needed "$php_ver"
 done
-for php_fpm_svc in php7.3-fpm php7.4-fpm php8.2-fpm php8.3-fpm php8.5-fpm; do
-    if systemctl is-active --quiet "${php_fpm_svc}.service" 2>/dev/null; then
-        systemctl reload "${php_fpm_svc}.service" || true
-    fi
-done
+reload_cobaco_php_fpm_services
 success "cobaco PHP 共通 ini の配置完了"
 
 # PHP-FPM: グループ書き込み可能なファイルを www-data が作成できるよう UMask を設定

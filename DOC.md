@@ -8,7 +8,7 @@ Web (PHP-FPM) 向けの PHP 設定は次の3層に分ける。CLI (`php`, `compo
 
 | 層 | 正本 / 配置 | 責任 |
 |----|-------------|------|
-| バージョン共通 | リポジトリ `templates/php/<ver>/99-cobaco.ini` → サーバー `/etc/php/<ver>/fpm/conf.d/99-cobaco.ini` | その PHP バージョンの全 FPM プール共通。`setup.sh` がコピーする |
+| バージョン共通 | リポジトリ `templates/php/<ver>/99-cobaco.ini` → サーバー `/etc/php/<ver>/fpm/conf.d/99-cobaco.ini` | その PHP バージョンの全 FPM プール共通。`apply-php-fpm-ini.sh` または `setup.sh` がコピーする |
 | 宣言 | `/root/cobaco_config/domains.yml` の `php_settings` | サイトごとに変えたい ini の差分 |
 | サイト別 FPM プール | `/var/www/<domain>/conf/php-fpm.conf` | `add-domain.sh` が `domains.yml` から毎回生成。所有者 `root:root`。ドキュメントルートは `public/` のため Web からは読めない |
 
@@ -28,6 +28,34 @@ Nginx の `fastcgi_pass` はサイト専用ソケット `/run/php/php<ver>-fpm-<
 | `display_errors`, `display_startup_errors` | `php_admin_flag[...]` (`On` / `Off`) |
 
 `php_version` を変更したときは、古いバージョンの `pool.d/<domain>.conf` リンクを外し、新バージョンに張り直して両方の FPM を reload する。
+
+### バージョン共通デフォルトの追加・変更
+
+全サイト・全 FPM プールに必ず効かせたい ini（セキュリティ基線など）は、`domains.yml` ではなく次の **5 ファイルすべて**に同じ内容を書く。
+
+- `templates/php/7.3/99-cobaco.ini`
+- `templates/php/7.4/99-cobaco.ini`
+- `templates/php/8.2/99-cobaco.ini`
+- `templates/php/8.3/99-cobaco.ini`
+- `templates/php/8.5/99-cobaco.ini`
+
+特定の PHP バージョンだけ値を変える必要があるときだけ、該当ファイルだけ差分を書く。コメントに日付と理由（CVE 番号など）を残す。
+
+**本番への反映**（ini だけ変えたとき。`add-domain.sh` は不要）:
+
+```bash
+cd /root/cobaco && git pull
+bash apply-php-fpm-ini.sh
+```
+
+初回 VPS や PHP パッケージ追加直後は `bash setup.sh` でもよい（ini 配置に加え `www.conf` 退避を行う）。
+
+**確認**（root）:
+
+```bash
+ls -la /etc/php/8.5/fpm/conf.d/99-cobaco.ini
+php-fpm8.5 -i 2>/dev/null | rg 'session.upload_progress.enabled'
+```
 
 ## ログローテーション
 
