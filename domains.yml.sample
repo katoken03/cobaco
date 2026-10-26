@@ -29,6 +29,14 @@
 #     users      : ユーザー一覧 (1 人以上)
 #       id       : ログイン ID (必須)
 #       password : パスワード (必須。実ファイルは git に含めない)
+#   mysql        : MariaDB のデータベースと専用ユーザー (省略可。配列)
+#                  apply-mysql.sh / add-domain.sh が適用。アプリの .env は自動生成しない
+#     database   : データベース名 (必須。サーバー全体で一意)
+#     user       : その DB 専用ユーザー (必須。サーバー全体で一意)
+#     password   : パスワード (必須。domains.yml は Git 外で管理)
+#     charset    : 新規 CREATE 時のみ (省略時: utf8mb4)
+#     collation  : 新規 CREATE 時のみ (省略時: utf8mb4_unicode_ci)
+#                  宣言から外しても DB / ユーザーは DROP しない (DOC.md 参照)
 
 domains:
   - name: example.com
@@ -57,6 +65,10 @@ domains:
       users:
         - id: admin
           password: "change-me"
+    mysql:
+      - database: staging_example
+        user: staging_example
+        password: "change-me-db"
 
   - name: legacy.example.com
     type: php

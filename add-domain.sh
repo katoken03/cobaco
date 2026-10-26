@@ -836,6 +836,12 @@ apply_domain() {
     # バリデーション
     validate_domain_config "$domain"
 
+    local mysql_apply_args=()
+    if [[ "$DRY_RUN" == true ]]; then
+        mysql_apply_args+=(--dry-run)
+    fi
+    bash "${SCRIPT_DIR}/apply-mysql.sh" "${mysql_apply_args[@]}" "$domain"
+
     local type ssl
     type=$(yq e ".domains[] | select(.name == \"${domain}\") | .type" "$DOMAINS_FILE")
     ssl=$(yq e ".domains[] | select(.name == \"${domain}\") | .ssl" "$DOMAINS_FILE")

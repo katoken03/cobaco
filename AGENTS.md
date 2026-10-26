@@ -26,6 +26,7 @@ cobaco/
 ├── setup.sh              # 初回サーバーセットアップ (Nginx・PHP・PM2・MariaDB 等)
 ├── configure-firewall.sh # UFW: Web / SSH / メール(任意) のみ許可
 ├── apply-php-fpm-ini.sh  # バージョン共通 FPM ini の配置と FPM reload
+├── apply-mysql.sh        # domains.yml の mysql 宣言を MariaDB に適用
 ├── add-domain.sh         # ドメイン追加・Nginx 設定生成
 ├── deploy.sh             # git pull + ビルド + 再起動
 ├── monitor.sh            # サーバー異常検知と Webhook 通知
@@ -53,6 +54,7 @@ bash setup.sh
 # 2. 本番: /root/cobaco_config/domains.yml にドメインを追加してから適用
 #    (domains.yml.sample をコピー。cobaco が読めるよう chmod 711 /root && chmod 644 ファイル)
 bash add-domain.sh example.com
+# DB だけ更新するとき: bash apply-mysql.sh example.com  (root)
 
 # 3. デプロイ (cobaco ユーザーで実行)
 bash deploy.sh example.com

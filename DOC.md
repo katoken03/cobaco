@@ -29,6 +29,51 @@ Nginx の `fastcgi_pass` はサイト専用ソケット `/run/php/php<ver>-fpm-<
 
 `php_version` を変更したときは、古いバージョンの `pool.d/<domain>.conf` リンクを外し、新バージョンに張り直して両方の FPM を reload する。
 
+## MariaDB（domains.yml の `mysql`）
+
+ドメインごとに MariaDB のデータベースと専用ユーザーを宣言する。`setup.sh` で入れた MariaDB を前提とし、3306 は UFW で公開しない（localhost / Unix ソケットのみ）。
+
+| 項目 | 説明 |
+|------|------|
+| 宣言 | `/root/cobaco_config/domains.yml` の各ドメイン直下 `mysql`（配列）。省略または空なら何もしない |
+| 適用 | `apply-mysql.sh`（root）。`add-domain.sh` 実行時にも同内容を適用 |
+| スクリプト | リポジトリ `apply-mysql.sh`（本番例: `/root/cobaco/apply-mysql.sh`） |
+
+### 宣言フィールド
+
+| キー | 必須 | 説明 |
+|------|------|------|
+| `database` | はい | データベース名。`domains.yml` 全体で一意 |
+| `user` | はい | その DB 専用ユーザー名。全体で一意（他 DB と共有しない） |
+| `password` | はい | 平文。ファイルは Git 外（`basic_auth.password` と同様） |
+| `charset` | いいえ | 既定 `utf8mb4`。**新規 `CREATE DATABASE` 時のみ** |
+| `collation` | いいえ | 既定 `utf8mb4_unicode_ci`。同上 |
+
+`database` / `user` / `charset` / `collation` は `^[A-Za-z][A-Za-z0-9_]*$`、長 1〜64。`password` は空・改行不可。
+
+### 適用ポリシー（宣言に書かない固定値）
+
+- 接続元は `'user'@'localhost'` のみ。アプリの DB ホストは **`localhost`**（`127.0.0.1` は TCP のため対象外）
+- 権限は当該データベースに対する `ALL PRIVILEGES` のみ（`database.*`）
+- 再実行は冪等（ユーザー作成・パスワード同期・GRANT 再付与）
+- **DROP しない**。宣言からエントリを消した・名前を変えた・ドメイン自体を消した場合も、既存 DB / ユーザーは残す
+- 既存 DB の文字セットと宣言が食い違う場合は警告のみ（変更しない）
+
+管理接続は root の Unix ソケット（`mysql -u root`）。接続できない場合は `/root/.my.cnf` 等を整える。root パスワードは `domains.yml` に置かない。
+
+アプリの `.env` / `wp-config.php` 等は cobaco では書かない。接続情報は運用側で転記する。
+
+### コマンド（root）
+
+```bash
+cd /root/cobaco && git pull
+bash apply-mysql.sh example.com
+bash apply-mysql.sh --all
+bash apply-mysql.sh --dry-run example.com
+```
+
+DB だけ変えたときは `apply-mysql.sh` のみでよい（Nginx は触らない）。ドメイン追加・更新時は `add-domain.sh` が内部で `apply-mysql.sh` を呼ぶ。
+
 ### バージョン共通デフォルトの追加・変更
 
 全サイト・全 FPM プールに必ず効かせたい ini（セキュリティ基線など）は、`domains.yml` ではなく次の **5 ファイルすべて**に同じ内容を書く。
