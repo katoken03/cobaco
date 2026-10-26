@@ -24,6 +24,7 @@ cobaco/
 ├── DOC.md                # 仕様・パス・構成の説明（仕様変更時は必ず更新）
 ├── SETUP_USERS.md        # ユーザー・SSH セットアップ手順 (root / cobaco)
 ├── setup.sh              # 初回サーバーセットアップ (Nginx・PHP・PM2・MariaDB 等)
+├── configure-firewall.sh # UFW: Web / SSH / メール(任意) のみ許可
 ├── apply-php-fpm-ini.sh  # バージョン共通 FPM ini の配置と FPM reload
 ├── add-domain.sh         # ドメイン追加・Nginx 設定生成
 ├── deploy.sh             # git pull + ビルド + 再起動

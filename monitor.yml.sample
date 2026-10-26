@@ -35,3 +35,8 @@ events:
   # この秒数の窓で SSH 失敗が min_count 以上なら ALERT（収束するまで再通知しない）
   ssh_fail_window_seconds: 300
   ssh_fail_min_count: 50
+
+# 公開 TCP リスナー監視で許可する追加ポート（UFW で開けるメール等）
+# 省略時は SSH 実ポート + 80 + 443 のみ
+public_ports:
+  extra_tcp: [587, 465, 993, 995]

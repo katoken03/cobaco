@@ -477,45 +477,7 @@ fi
 # ファイアウォール設定
 # ─────────────────────────────────────────────
 info "ファイアウォール (ufw) を設定中..."
-
-mapfile -t SSH_LISTEN_PORTS < <(
-    systemctl cat ssh.socket 2>/dev/null | awk '
-        /^ListenStream=/ {
-            line = $0
-            sub(/^ListenStream=/, "", line)
-            if (line == "" || line == "-") next
-            n = split(line, a, ":")
-            print a[n]
-        }
-    ' | sort -nu
-)
-if [[ ${#SSH_LISTEN_PORTS[@]} -eq 0 ]]; then
-    SSH_LISTEN_PORTS=(22)
-fi
-
-ssh_uses_non_default_port=false
-for port in "${SSH_LISTEN_PORTS[@]}"; do
-    if [[ "$port" != "22" ]]; then
-        ssh_uses_non_default_port=true
-        break
-    fi
-done
-
-if [[ "$ssh_uses_non_default_port" == true ]]; then
-    for port in "${SSH_LISTEN_PORTS[@]}"; do
-        ufw allow "${port}/tcp" comment 'SSH'
-    done
-    ufw delete allow OpenSSH >/dev/null 2>&1 || true
-    ufw delete allow OpenSSH >/dev/null 2>&1 || true
-    ufw delete allow 22/tcp >/dev/null 2>&1 || true
-    ufw delete allow 22/tcp >/dev/null 2>&1 || true
-else
-    ufw allow OpenSSH
-fi
-
-ufw allow 'Nginx Full'
-ufw --force enable
-success "ファイアウォール設定完了"
+bash "${SCRIPT_DIR}/configure-firewall.sh"
 
 # ─────────────────────────────────────────────
 # 本番用設定ディレクトリ (Git 作業ツリー外)

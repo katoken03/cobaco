@@ -106,6 +106,31 @@ logrotate -d /etc/logrotate.d/cobaco-pm2   # ドライラン
 journalctl --disk-usage
 ```
 
+## ファイアウォール（UFW）
+
+ConoHa VPS 2.0 など **コントロールパネルにファイアウォールが無い** 環境では、OS 上の **UFW** が入口制御の本体とする。`setup.sh` および単体の `configure-firewall.sh` が同じルールを冪等に適用する。
+
+| 種別 | 既定で許可する TCP | 備考 |
+|------|-------------------|------|
+| Web | 80, 443 | `WEB_TCP_PORTS` で変更可 |
+| SSH | `ssh.socket` の ListenStream から自動検出（例: 22000） | 非 22 のとき `OpenSSH` / 22 ルールを削除 |
+| メール | 587, 465, 993, 995 | `MAIL_TCP_PORTS` で変更可。**25 は許可しない**（スクリプト内で除外） |
+| その他 | 拒否 | 既定 incoming: reject |
+
+メール MTA 未導入でも UFW でポートを開けてよい。MariaDB 等は localhost のみ待ち受けとし、UFW で公開しない。
+
+**適用（root）**:
+
+```bash
+cd /root/cobaco && git pull
+bash configure-firewall.sh
+ufw status verbose
+```
+
+メールを載せない VPS では `MAIL_TCP_PORTS= bash configure-firewall.sh` でメール用ルールをスキップできる。
+
+**monitor との整合**: `monitor.yml` の `public_ports.extra_tcp` に UFW で開けた追加ポート（メール等）を書く。省略時は SSH 実ポート + 80 + 443 のみが許可リストになる。
+
 ## サーバー監視（異常通知）
 
 サイト単位ではなく **VPS 全体** を対象に、5 分おきの短いチェックでしきい値超過や侵入の兆候だけ HTTPS Webhook へ通知する。常駐エージェントやメトリクス DB は使わない。
@@ -129,7 +154,7 @@ journalctl --disk-usage
 - **disk**: `/`（および `extra_mounts`）の使用率・ inode 使用率
 - **load**: 15 分ロードアベレージが `CPU 数 × load15_multiplier` 超
 - **services**: `nginx`、`mariadb`、有効な `php*-fpm` が active でない
-- **public_ports**: `0.0.0.0` / `[::]` で待ち受けする TCP のうち、SSH 実ポート・80・443 以外
+- **public_ports**: `0.0.0.0` / `[::]` で待ち受けする TCP のうち、SSH 実ポート・80・443・`public_ports.extra_tcp` 以外
 
 **イベント** — journal カーソルで増分のみ（初回有効化時はカーソルを現在位置に初期化し、過去ログは通知しない）。
 

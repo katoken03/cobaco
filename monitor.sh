@@ -377,10 +377,14 @@ get_ssh_listen_ports() {
 }
 
 check_public_listeners() {
-    local -a allowed=() ssh_ports=()
+    local -a allowed=() ssh_ports=() extra_ports=()
     mapfile -t ssh_ports < <(get_ssh_listen_ports)
     allowed+=("${ssh_ports[@]}")
     allowed+=(80 443)
+    mapfile -t extra_ports < <(yq -r '.public_ports.extra_tcp[]? // ""' "$MONITOR_CONFIG" | sed '/^$/d')
+    if ((${#extra_ports[@]} > 0)); then
+        allowed+=("${extra_ports[@]}")
+    fi
 
     local bad=false
     local unexpected=()
@@ -413,8 +417,12 @@ check_public_listeners() {
     local detail=""
     if ((${#unexpected[@]} > 0)); then
         detail="unexpected listeners: $(IFS='; '; echo "${unexpected[*]}")"
+        local allowed_desc="SSH ($(IFS=,; echo "${ssh_ports[*]}")), 80, 443"
+        if ((${#extra_ports[@]} > 0)); then
+            allowed_desc="${allowed_desc}, extra ($(IFS=,; echo "${extra_ports[*]}"))"
+        fi
         detail="${detail}
-allowed: SSH ($(IFS=,; echo "${ssh_ports[*]}")), 80, 443"
+allowed: ${allowed_desc}"
     else
         detail="no unexpected public TCP listeners"
     fi
