@@ -59,7 +59,7 @@ Nginx の `fastcgi_pass` はサイト専用ソケット `/run/php/php<ver>-fpm-<
 - **DROP しない**。宣言からエントリを消した・名前を変えた・ドメイン自体を消した場合も、既存 DB / ユーザーは残す
 - 既存 DB の文字セットと宣言が食い違う場合は警告のみ（変更しない）
 
-管理接続は root の Unix ソケット（`mysql -u root`）。接続できない場合は `/root/.my.cnf` 等を整える。root パスワードは `domains.yml` に置かない。
+管理接続は root の Unix ソケット（`mysql -u root`）か `/root/.my.cnf`（`chmod 600`）。`mysql_secure_installation` 後は `.my.cnf` が必要なことが多い。root パスワードは `domains.yml` に置かない。`.my.cnf` の `password` に `#` や空白が含まれるときは **ダブルクォートで囲む**（未引用だと `#` 以降がコメントになる）。
 
 アプリの `.env` / `wp-config.php` 等は cobaco では書かない。接続情報は運用側で転記する。
 

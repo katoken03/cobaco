@@ -159,7 +159,7 @@ ensure_mariadb_admin() {
     fi
 
     if ! mysql -u root -e "SELECT 1;" &>/dev/null; then
-        die "root で MariaDB に接続できません。unix_socket 認証か /root/.my.cnf を確認してください。"
+        die "root で MariaDB に接続できません。/root/.my.cnf（chmod 600）または unix_socket を確認してください。password に # がある場合は .my.cnf でダブルクォートが必要です。"
     fi
 }
 
