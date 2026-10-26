@@ -1,5 +1,5 @@
 # composer-paths.yml
-# カレントディレクトリのパス prefix から Composer 実行時の PHP CLI バージョンを決める。
+# カレントディレクトリのパス prefix から PHP CLI バージョンを決める（composer / php 共通）。
 # domains.yml の /var/www/<domain> も自動で対象（.php-version があると最優先）。
 #
 # 配置: /root/cobaco_config/composer-paths.yml（Git 外）

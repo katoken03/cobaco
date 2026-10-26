@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# resolve-composer-php.sh — カレントディレクトリから Composer 用 PHP CLI を決める
+# resolve-composer-php.sh — カレントディレクトリから PHP CLI を決める（Composer / php 共通）
 # shellcheck shell=bash
 
 COBACO_CONFIG_DIR="${COBACO_CONFIG_DIR:-/root/cobaco_config}"
@@ -93,4 +93,10 @@ cobaco_composer() {
 
     php_cli=$(resolve_composer_php_cli "${COBACO_COMPOSER_CWD:-$PWD}")
     "$php_cli" "$composer_phar" "$@"
+}
+
+cobaco_php() {
+    local php_cli
+    php_cli=$(resolve_composer_php_cli "${COBACO_PHP_CWD:-$PWD}")
+    exec "$php_cli" "$@"
 }

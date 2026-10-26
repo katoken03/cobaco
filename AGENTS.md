@@ -31,6 +31,7 @@ cobaco/
 ├── add-domain.sh         # ドメイン追加・Nginx 設定生成
 ├── composer-paths.yml.sample  # Composer 用 PHP バージョンのパス対応（Git 外本番用）
 ├── bin/composer          # ランチャー本体 → install-composer.sh が /usr/local/bin に配置
+├── bin/cobaco-php        # PHP CLI シム → /usr/local/bin/cobaco-php と cobaco ~/bin/php
 ├── lib/resolve-composer-php.sh
 ├── deploy.sh             # git pull + ビルド + 再起動
 ├── monitor.sh            # サーバー異常検知と Webhook 通知

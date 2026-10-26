@@ -29,9 +29,19 @@ Nginx の `fastcgi_pass` はサイト専用ソケット `/run/php/php<ver>-fpm-<
 
 `php_version` を変更したときは、古いバージョンの `pool.d/<domain>.conf` リンクを外し、新バージョンに張り直して両方の FPM を reload する。
 
-## Composer（ディレクトリごとの PHP CLI）
+## CLI シム（composer / php）
 
-Composer 本体は1つ。`/usr/local/bin/composer` は cobaco ランチャーで、**実行時のカレントディレクトリ**から PHP CLI（`php8.5` / `php7.4` 等）を選んで phar を起動する。`deploy.sh` の `composer install` も同じコマンドを使う。
+**実行時のカレントディレクトリ**から PHP CLI（`php8.5` / `php7.4` 等）を選ぶ。判定ロジックは [`lib/resolve-composer-php.sh`](lib/resolve-composer-php.sh) に1本化。
+
+| コマンド | 配置 | 主な利用者 |
+|----------|------|------------|
+| `composer` | `/usr/local/bin/composer` | cobaco / root。phar を選んだ PHP で実行 |
+| `cobaco-php` | `/usr/local/bin/cobaco-php` | 明示的にシムを使うとき（root 含む） |
+| `php` | `/home/cobaco/bin/php` | **cobaco のみ**。`~/.profile` で `~/bin` を PATH 先頭にしたとき、通常の `php` がシムになる |
+
+システムの `/usr/local/bin/php`（デフォルト PHP）は**上書きしない**。root / cron は従来どおり `php` または `cobaco-php`。
+
+`deploy.sh` の `composer install` も `/usr/local/bin/composer` 経由で同じ解決を使う。
 
 ### 導入（root）
 
@@ -40,18 +50,20 @@ cd /root/cobaco && git pull
 bash install-composer.sh
 ```
 
-phar は `/usr/local/lib/cobaco/composer.phar`。既存の素の `composer` があれば `/usr/local/bin/composer.pre-cobaco` に退避する。
+Composer phar は `/usr/local/lib/cobaco/composer.phar`。既存の素の `composer` があれば `/usr/local/bin/composer.pre-cobaco` に退避する。`install-composer.sh` は `cobaco-php` と `/home/cobaco/bin/php`、cobaco の `~/.profile`（PATH）も idempotent に配置する。
 
 ### PHP バージョンの決め方（優先順）
+
+`composer` / `cobaco-php` / cobaco の `php` で共通。
 
 1. カレントディレクトリから親へ `.php-version`（1 行、例: `8.5` / `7.4`）
 2. **最長 prefix 一致** — `/root/cobaco_config/composer-paths.yml` の `paths`（雛形: `composer-paths.yml.sample`）
 3. 同上 — `domains.yml` の PHP サイト `/var/www/<name>` と `php_version`
 4. どれも無ければ `php`（システムデフォルト）
 
-例: `/home/cobaco/www/siteA` で `composer` → `composer-paths.yml` で `php_version: "8.5"` なら `php8.5` 経由。
+例: `/home/cobaco/www/siteA` で `php -v` / `composer` → `composer-paths.yml` で `php_version: "8.5"` なら `php8.5` 経由。
 
-`composer-paths.yml` は `domains.yml` と同様 `/root/cobaco_config/` に置き、cobaco が読める権限にする。
+`composer-paths.yml` は `domains.yml` と同様 `/root/cobaco_config/` に置き、cobaco が読める権限にする。cobaco で `php -v` を使うときは login shell（または `source ~/.profile`）で PATH が効いていること。
 
 ## MariaDB（domains.yml の `mysql`）
 
