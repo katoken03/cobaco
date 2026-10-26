@@ -1,0 +1,16 @@
+# composer-paths.yml
+# カレントディレクトリのパス prefix から Composer 実行時の PHP CLI バージョンを決める。
+# domains.yml の /var/www/<domain> も自動で対象（.php-version があると最優先）。
+#
+# 配置: /root/cobaco_config/composer-paths.yml（Git 外）
+# 初回: この sample をコピーして編集する。
+# cobaco が読む場合: domains.yml と同様 chmod 711 /root && chmod 644 ファイル
+#
+# 例: /home/cobaco/www/siteA で composer → php8.5
+#     /home/cobaco/www/siteB で composer → php7.4
+
+paths:
+  - path: /home/cobaco/www/siteA
+    php_version: "8.5"
+  - path: /home/cobaco/www/siteB
+    php_version: "7.4"

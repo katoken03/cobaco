@@ -144,7 +144,7 @@ deploy_php() {
             success "composer install 完了"
         else
             warn "composer がインストールされていません。スキップします。"
-            warn "インストール: curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer"
+            warn "インストール (root): bash ${SCRIPT_DIR}/install-composer.sh"
         fi
     fi
 

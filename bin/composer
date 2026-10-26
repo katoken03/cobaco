@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# cobaco Composer ランチャー — カレントディレクトリに応じて php7.4 / php8.5 等を選ぶ
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# リポジトリ: cobaco/bin/composer → lib は ../lib
+# 本番: /usr/local/bin/composer → /usr/local/lib/cobaco/resolve-composer-php.sh
+if [[ -f "${SCRIPT_DIR}/../lib/resolve-composer-php.sh" ]]; then
+    # shellcheck source=lib/resolve-composer-php.sh
+    source "${SCRIPT_DIR}/../lib/resolve-composer-php.sh"
+elif [[ -f "/usr/local/lib/cobaco/resolve-composer-php.sh" ]]; then
+    # shellcheck source=/usr/local/lib/cobaco/resolve-composer-php.sh
+    source "/usr/local/lib/cobaco/resolve-composer-php.sh"
+else
+    echo "composer: resolve-composer-php.sh が見つかりません。" >&2
+    exit 1
+fi
+
+cobaco_composer "$@"

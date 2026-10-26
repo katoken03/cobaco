@@ -27,7 +27,11 @@ cobaco/
 ├── configure-firewall.sh # UFW: Web / SSH / メール(任意) のみ許可
 ├── apply-php-fpm-ini.sh  # バージョン共通 FPM ini の配置と FPM reload
 ├── apply-mysql.sh        # domains.yml の mysql 宣言を MariaDB に適用
+├── install-composer.sh   # Composer phar + ディレクトリ連動ランチャー (root)
 ├── add-domain.sh         # ドメイン追加・Nginx 設定生成
+├── composer-paths.yml.sample  # Composer 用 PHP バージョンのパス対応（Git 外本番用）
+├── bin/composer          # ランチャー本体 → install-composer.sh が /usr/local/bin に配置
+├── lib/resolve-composer-php.sh
 ├── deploy.sh             # git pull + ビルド + 再起動
 ├── monitor.sh            # サーバー異常検知と Webhook 通知
 ├── install-monitor.sh    # monitor の systemd timer / logrotate 配置

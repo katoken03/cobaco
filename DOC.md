@@ -29,6 +29,30 @@ Nginx の `fastcgi_pass` はサイト専用ソケット `/run/php/php<ver>-fpm-<
 
 `php_version` を変更したときは、古いバージョンの `pool.d/<domain>.conf` リンクを外し、新バージョンに張り直して両方の FPM を reload する。
 
+## Composer（ディレクトリごとの PHP CLI）
+
+Composer 本体は1つ。`/usr/local/bin/composer` は cobaco ランチャーで、**実行時のカレントディレクトリ**から PHP CLI（`php8.5` / `php7.4` 等）を選んで phar を起動する。`deploy.sh` の `composer install` も同じコマンドを使う。
+
+### 導入（root）
+
+```bash
+cd /root/cobaco && git pull
+bash install-composer.sh
+```
+
+phar は `/usr/local/lib/cobaco/composer.phar`。既存の素の `composer` があれば `/usr/local/bin/composer.pre-cobaco` に退避する。
+
+### PHP バージョンの決め方（優先順）
+
+1. カレントディレクトリから親へ `.php-version`（1 行、例: `8.5` / `7.4`）
+2. **最長 prefix 一致** — `/root/cobaco_config/composer-paths.yml` の `paths`（雛形: `composer-paths.yml.sample`）
+3. 同上 — `domains.yml` の PHP サイト `/var/www/<name>` と `php_version`
+4. どれも無ければ `php`（システムデフォルト）
+
+例: `/home/cobaco/www/siteA` で `composer` → `composer-paths.yml` で `php_version: "8.5"` なら `php8.5` 経由。
+
+`composer-paths.yml` は `domains.yml` と同様 `/root/cobaco_config/` に置き、cobaco が読める権限にする。
+
 ## MariaDB（domains.yml の `mysql`）
 
 ドメインごとに MariaDB のデータベースと専用ユーザーを宣言する。`setup.sh` で入れた MariaDB を前提とし、3306 は UFW で公開しない（localhost / Unix ソケットのみ）。
