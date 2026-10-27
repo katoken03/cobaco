@@ -11,6 +11,7 @@ SSH_ALLOW_F2B_FILE="${SSH_ALLOW_F2B_FILE:-/etc/fail2ban/jail.d/cobaco-ignoreip.l
 SSH_ALLOW_UFW_DIR="${SSH_ALLOW_UFW_DIR:-/etc/ufw}"
 
 # ssh.socket の ListenStream からポートを出力する (なければ 22)
+# 空の ListenStream= はそれまでの指定を打ち消す (systemd の drop-in の書き方)
 ssh_allow_listen_ports() {
     local ports=()
     mapfile -t ports < <(
@@ -18,10 +19,12 @@ ssh_allow_listen_ports() {
             /^ListenStream=/ {
                 line = $0
                 sub(/^ListenStream=/, "", line)
-                if (line == "" || line == "-") next
+                if (line == "") { split("", found); next }
+                if (line == "-") next
                 n = split(line, a, ":")
-                print a[n]
+                found[a[n]] = 1
             }
+            END { for (p in found) print p }
         ' | sort -nu
     )
     if ((${#ports[@]} == 0)); then

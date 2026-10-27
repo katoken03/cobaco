@@ -364,10 +364,13 @@ get_ssh_listen_ports() {
             /^ListenStream=/ {
                 line = $0
                 sub(/^ListenStream=/, "", line)
-                if (line == "" || line == "-") next
+                # 空の ListenStream= はそれまでの指定を打ち消す (systemd の drop-in の書き方)
+                if (line == "") { split("", found); next }
+                if (line == "-") next
                 n = split(line, a, ":")
-                print a[n]
+                found[a[n]] = 1
             }
+            END { for (p in found) print p }
         ' | sort -nu
     )
     if ((${#ports[@]} == 0)); then
