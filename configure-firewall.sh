@@ -103,3 +103,4 @@ install -d -m 755 /usr/local/lib/cobaco
 install -m 644 "${SCRIPT_DIR}/lib/ssh-allow.sh" /usr/local/lib/cobaco/ssh-allow.sh
 install -m 755 "${SCRIPT_DIR}/bin/ssh-allow" /usr/local/sbin/ssh-allow
 success "ssh-allow を配置しました: /usr/local/sbin/ssh-allow"
+info "SSH の許可リストは ssh-allow list で表示できます (追加・削除は ssh-allow のメニューから)。"
