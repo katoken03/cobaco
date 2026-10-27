@@ -212,6 +212,33 @@ ufw status verbose
 
 **monitor との整合**: `monitor.yml` の `public_ports.extra_tcp` に UFW で開けた追加ポート（メール等）を書く。省略時は SSH 実ポート + 80 + 443 のみが許可リストになる。
 
+## fail2ban（SSH ブルートフォース対策）
+
+`setup.sh` および単体の `configure-fail2ban.sh` が sshd jail を冪等に設定する。BAN した IP は **全ポートで遮断**する（`banaction = %(banaction_allports)s` → `nftables[type=allports]`）。SSH を 22 以外（例: 22000）で待ち受けていても、ポート指定の漏れで BAN が効かなくなることはない。
+
+| 項目 | 値 |
+|------|-----|
+| 生成ファイル | `/etc/fail2ban/jail.d/cobaco-sshd.local`（毎回上書き。手で編集しない） |
+| backend | `systemd`（journal の `ssh.service` を監視） |
+| bantime / findtime / maxretry | 86400 / 600 / 5（`F2B_SSHD_BANTIME` / `F2B_SSHD_FINDTIME` / `F2B_SSHD_MAXRETRY` で変更可） |
+
+`jail.d/*.local` は `/etc/fail2ban/jail.local` より後に読まれるため、手書きの `jail.local` に `[sshd]` があってもこちらが優先される（スクリプトは警告のみ出し、`jail.local` は消さない）。設定検査（`fail2ban-client -t`）に失敗した場合は生成前の状態に戻して終了する。
+
+**適用（root）**:
+
+```bash
+cd /root/cobaco && git pull
+bash configure-fail2ban.sh
+```
+
+**確認**:
+
+```bash
+fail2ban-client status sshd
+fail2ban-client get sshd actions          # nftables が表示される
+nft list table inet f2b-table             # ルールに dport の条件が無いこと
+```
+
 ## サーバー監視（異常通知）
 
 サイト単位ではなく **VPS 全体** を対象に、5 分おきの短いチェックでしきい値超過や侵入の兆候だけ HTTPS Webhook へ通知する。常駐エージェントやメトリクス DB は使わない。

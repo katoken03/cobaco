@@ -75,6 +75,7 @@ apt-get install -y -qq \
     unzip \
     software-properties-common \
     ufw \
+    fail2ban \
     nginx \
     apache2-utils \
     mariadb-server \
@@ -478,6 +479,12 @@ fi
 # ─────────────────────────────────────────────
 info "ファイアウォール (ufw) を設定中..."
 bash "${SCRIPT_DIR}/configure-firewall.sh"
+
+# ─────────────────────────────────────────────
+# fail2ban (sshd: 全ポート遮断)
+# ─────────────────────────────────────────────
+info "fail2ban を設定中..."
+bash "${SCRIPT_DIR}/configure-fail2ban.sh"
 
 # ─────────────────────────────────────────────
 # 本番用設定ディレクトリ (Git 作業ツリー外)

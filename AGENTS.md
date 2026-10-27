@@ -25,6 +25,7 @@ cobaco/
 ├── SETUP_USERS.md        # ユーザー・SSH セットアップ手順 (root / cobaco)
 ├── setup.sh              # 初回サーバーセットアップ (Nginx・PHP・PM2・MariaDB 等)
 ├── configure-firewall.sh # UFW: Web / SSH / メール(任意) のみ許可
+├── configure-fail2ban.sh # fail2ban sshd jail (BAN は全ポート遮断)
 ├── apply-php-fpm-ini.sh  # バージョン共通 FPM ini の配置と FPM reload
 ├── apply-mysql.sh        # domains.yml の mysql 宣言を MariaDB に適用
 ├── install-composer.sh   # Composer phar + ディレクトリ連動ランチャー (root)
