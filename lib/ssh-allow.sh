@@ -159,7 +159,10 @@ ssh_allow_apply() {
         fi
         wanted["$addr"]=1
         for port in "${ports[@]}"; do
-            ufw allow proto tcp from "$addr" to any port "$port" comment "SSH allow: ${memo:-$addr}" >/dev/null
+            if ! ufw allow proto tcp from "$addr" to any port "$port" comment "SSH allow: ${memo:-$addr}" >/dev/null; then
+                error "UFW に ${addr} → ${port}/tcp を追加できませんでした。古いルールは削除せずに中止します。"
+                return 1
+            fi
         done
     done
     if ((${#wanted[@]} == 0)); then
@@ -208,7 +211,10 @@ ssh_allow_open() {
     mapfile -t ports < <(ssh_allow_listen_ports)
     local port
     for port in "${ports[@]}"; do
-        ufw allow "${port}/tcp" comment 'SSH' >/dev/null
+        if ! ufw allow "${port}/tcp" comment 'SSH' >/dev/null; then
+            error "UFW に ${port}/tcp (Anywhere) を追加できませんでした。IP ごとのルールは削除せずに中止します。"
+            return 1
+        fi
     done
 
     mapfile -t current < <(ssh_allow_ufw_rules)

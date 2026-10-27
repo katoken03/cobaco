@@ -40,12 +40,26 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# 同時に 2 つ動かしてリストや UFW を壊さないようにする
-exec 9>/run/lock/cobaco-ssh-allow.lock
-if ! flock -n 9; then
-    error "別の ssh-allow が実行中です。"
-    exit 1
-fi
+LOCK_FILE="/run/lock/cobaco-ssh-allow.lock"
+
+# リストや UFW を書き換える間だけロックを取って "$@" を実行する
+# (メニューや確認プロンプトの入力待ちではロックを持たないので、放置されても他の操作を妨げない)
+with_lock() {
+    local rc=0
+    exec 9<>"$LOCK_FILE"
+    if ! flock -n 9; then
+        local holder
+        holder="$(head -n 1 "$LOCK_FILE" 2>/dev/null || true)"
+        exec 9>&-
+        error "別の ssh-allow がリストを変更中です${holder:+ (${holder})}。終わってからもう一度実行してください。"
+        return 1
+    fi
+    printf 'PID %s, 端末 %s, %s 開始\n' "$$" "$(tty -s && tty || echo なし)" "$(date '+%H:%M:%S')" > "$LOCK_FILE"
+    "$@" || rc=$?
+    : > "$LOCK_FILE"
+    exec 9>&-
+    return "$rc"
+}
 
 # 編集対象のリスト: オフ中は退避したリスト、それ以外は有効なリスト
 list_file() {
@@ -127,6 +141,10 @@ cmd_list() {
 }
 
 cmd_add() {
+    with_lock _add "$@"
+}
+
+_add() {
     local raw="${1:-}" memo="${2:-}"
     if [[ -z "$raw" ]]; then
         error "追加する IP を指定してください。例: ssh-allow add 203.0.113.5 office"
@@ -167,6 +185,7 @@ cmd_add() {
     ssh_allow_apply
 }
 
+# 削除対象を決めて確認を取る (ここではロックを取らない)。実際の削除は _remove_addr がロック内で行う
 cmd_remove() {
     local target="${1:-}"
     if [[ -z "$target" ]]; then
@@ -213,8 +232,23 @@ sys.exit(0 if ipaddress.ip_address(sys.argv[1]) in ipaddress.ip_network(sys.argv
 ' "$client" "$addr" 2>/dev/null; then
         warn "${addr} には今の SSH 接続元 ${client} が含まれます。削除すると次回から接続できません。"
         local answer
-        read -r -p "本当に削除しますか? [y/N]: " answer
+        read -r -p "本当に削除しますか? [y/N]: " answer || answer=""
         [[ "$answer" == "y" || "$answer" == "Y" ]] || { info "中止しました。"; return 0; }
+    fi
+
+    with_lock _remove_addr "$addr"
+}
+
+_remove_addr() {
+    local addr="$1" state file
+    # 確認の間に他の操作で変わっていることがあるので、ロック内で状態を読み直す
+    state="$(ssh_allow_state)"
+    file="$(list_file)"
+    local -a entries=()
+    mapfile -t entries < <(ssh_allow_read_list "$file")
+    if [[ "$state" == on ]] && ((${#entries[@]} <= 1)); then
+        error "最後の 1 件は削除できません。先に新しい IP を追加するか、ssh-allow off で絞り込みをやめてください。"
+        return 1
     fi
 
     local tmp
@@ -237,8 +271,9 @@ sys.exit(0 if ipaddress.ip_address(sys.argv[1]) in ipaddress.ip_network(sys.argv
     fi
     replace_list "$tmp" "$file"
     success "削除しました: ${addr}"
-    [[ "$state" == on ]] && ssh_allow_apply
-    return 0
+    if [[ "$state" == on ]]; then
+        ssh_allow_apply
+    fi
 }
 
 cmd_off() {
@@ -251,10 +286,18 @@ cmd_off() {
     if [[ "$state" == on ]]; then
         warn "SSH の接続元の絞り込みをやめ、全体に公開します (公開鍵認証と fail2ban は有効のまま)。"
         local answer
-        read -r -p "オフにしますか? [y/N]: " answer
+        read -r -p "オフにしますか? [y/N]: " answer || answer=""
         [[ "$answer" == "y" || "$answer" == "Y" ]] || { info "中止しました。"; return 0; }
     fi
-    ssh_allow_open
+    with_lock _off
+}
+
+_off() {
+    if [[ "$(ssh_allow_state)" == off ]]; then
+        info "絞り込みは既にオフです。"
+        return 0
+    fi
+    ssh_allow_open || return 1
     # リストは退避して残す (未設定からのオフは空の退避ファイルを「意図して公開中」の印にする)
     if [[ -f "$SSH_ALLOW_LIST" ]]; then
         mv "$SSH_ALLOW_LIST" "$SSH_ALLOW_DISABLED"
@@ -266,6 +309,10 @@ cmd_off() {
 }
 
 cmd_on() {
+    with_lock _on
+}
+
+_on() {
     local state
     state="$(ssh_allow_state)"
     if [[ "$state" == on ]]; then
@@ -284,6 +331,10 @@ cmd_on() {
     mv "$SSH_ALLOW_DISABLED" "$SSH_ALLOW_LIST"
     success "絞り込みをオンにしました。"
     ssh_allow_apply
+}
+
+cmd_apply() {
+    with_lock ssh_allow_apply
 }
 
 menu() {
@@ -310,7 +361,7 @@ menu() {
                 read -r -p "削除する番号: " target || continue
                 cmd_remove "$target" || true
                 ;;
-            4) ssh_allow_apply || true ;;
+            4) cmd_apply || true ;;
             5)
                 if [[ "$(ssh_allow_state)" == on ]]; then
                     cmd_off || true
@@ -329,7 +380,7 @@ case "${1:-}" in
     list)   cmd_list ;;
     add)    shift; cmd_add "$@" ;;
     remove) shift; cmd_remove "$@" ;;
-    apply)  ssh_allow_apply ;;
+    apply)  cmd_apply ;;
     off)    cmd_off ;;
     on)     cmd_on ;;
     -h|--help|help)
