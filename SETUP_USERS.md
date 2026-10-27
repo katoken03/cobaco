@@ -84,6 +84,11 @@ chmod 755 /var/www
 # cobaco を www-data グループに追加 (PHP が書いたファイルを cobaco が読めるように)
 usermod -aG www-data cobaco
 
+# www-data を cobaco グループに追加 (/home/cobaco 配下や cobaco 所有の writable へ PHP が書ける)
+usermod -aG cobaco www-data
+
+# Nginx / PHP-FPM の再起動は setup.sh が行う (この時点ではまだサービス未導入のことが多い)
+
 # cobaco 運用ログ (setup.sh でも作成するが、先に作っておいてもよい)
 mkdir -p /var/log/cobaco
 chown cobaco:cobaco /var/log/cobaco

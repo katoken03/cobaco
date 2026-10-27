@@ -29,6 +29,19 @@ Nginx の `fastcgi_pass` はサイト専用ソケット `/run/php/php<ver>-fpm-<
 
 `php_version` を変更したときは、古いバージョンの `pool.d/<domain>.conf` リンクを外し、新バージョンに張り直して両方の FPM を reload する。
 
+### Web 実行ユーザーと Unix グループ
+
+サイト別 FPM プールの `user` / `group` は `www-data` のまま（[templates/php-fpm-pool.conf.tmpl](templates/php-fpm-pool.conf.tmpl)）。Nginx も `user www-data` で動く。
+
+| ユーザー | 追加グループ | 目的 |
+|----------|--------------|------|
+| `cobaco` | `www-data` | PHP が書いたファイルをデプロイユーザーが扱える（[SETUP_USERS.md](SETUP_USERS.md) Step 2） |
+| `www-data` | `cobaco` | `/home/cobaco`（通常 `750`）を通過し、`cobaco` 所有でグループに書き込みがあるディレクトリへ PHP がファイルを作成できる |
+
+`www-data` を `cobaco` グループに入れるのは [SETUP_USERS.md](SETUP_USERS.md) Step 2 の `usermod` と、`setup.sh` 再実行時（冪等）。反映には Nginx と該当 `php*-fpm` の再起動が必要で、`setup.sh` が行う。
+
+`www-data` は `cobaco` ユーザーにならない。`cobaco` の sudo 権限や `700` の `.ssh` 等は Web プロセスには渡らない。
+
 ## CLI シム（composer / php）
 
 **実行時のカレントディレクトリ**から PHP CLI（`php8.5` / `php7.4` 等）を選ぶ。判定ロジックは [`lib/resolve-composer-php.sh`](lib/resolve-composer-php.sh) に1本化。

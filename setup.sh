@@ -365,11 +365,30 @@ EOF
     fi
 done
 systemctl daemon-reload
+
+# www-data を cobaco グループに追加 (Nginx / PHP-FPM が cobaco 所有の 775 等を読める)
+www_data_in_cobaco_group=false
+if id cobaco &>/dev/null && id www-data &>/dev/null; then
+    if id -nG www-data | tr ' ' '\n' | grep -qx cobaco; then
+        info "www-data は既に cobaco グループに所属しています"
+        www_data_in_cobaco_group=true
+    else
+        usermod -aG cobaco www-data
+        www_data_in_cobaco_group=true
+        success "www-data を cobaco グループに追加しました"
+    fi
+else
+    warn "cobaco または www-data が未作成のため、www-data の cobaco グループ追加をスキップしました (SETUP_USERS.md Step 2)。"
+fi
+
 for php_fpm_svc in php7.3-fpm php7.4-fpm php8.2-fpm php8.3-fpm php8.5-fpm; do
     if systemctl is-enabled "${php_fpm_svc}.service" &>/dev/null; then
         systemctl restart "${php_fpm_svc}.service" || true
     fi
 done
+if [[ "$www_data_in_cobaco_group" == true ]] && systemctl is-enabled nginx.service &>/dev/null; then
+    systemctl restart nginx.service || true
+fi
 success "PHP-FPM UMask 設定完了"
 
 # cobaco 運用ログ
