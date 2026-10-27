@@ -433,10 +433,12 @@ NODE_PATH="$(nvm which default)"
 success "Node.js $(node --version) のインストール完了"
 
 # PM2 のインストール
+pm2_version() { node -p "require('$(npm root -g)/pm2/package.json').version"; }
 if ! npm list -g pm2 &>/dev/null; then
     info "PM2 をグローバルインストール中..."
     npm install -g pm2
-    success "PM2 $(pm2 --version) のインストール完了"
+    # pm2 コマンドはデーモンを起動してしまうため、バージョンは package.json から読む
+    success "PM2 $(pm2_version) のインストール完了"
 else
     success "PM2 は既にインストール済み"
 fi
@@ -454,14 +456,11 @@ else
 fi
 
 # PM2 ログローテーション (Nginx と同様 daily / 14 世代)
-mkdir -p /root/.pm2/logs
 if id cobaco &>/dev/null; then
     mkdir -p /home/cobaco/.pm2/logs
     chown -R cobaco:cobaco /home/cobaco/.pm2
 fi
 cat > /etc/logrotate.d/cobaco-pm2 << 'EOF'
-/root/.pm2/pm2.log
-/root/.pm2/logs/*.log
 /home/cobaco/.pm2/pm2.log
 /home/cobaco/.pm2/logs/*.log
 {
@@ -506,6 +505,12 @@ info "fail2ban を設定中..."
 bash "${SCRIPT_DIR}/configure-fail2ban.sh"
 
 # ─────────────────────────────────────────────
+# OS の調整 (ICMP リダイレクト無効化・不要サービス停止・root PM2 停止)
+# ─────────────────────────────────────────────
+info "OS を調整中..."
+bash "${SCRIPT_DIR}/configure-os.sh"
+
+# ─────────────────────────────────────────────
 # 本番用設定ディレクトリ (Git 作業ツリー外)
 # ─────────────────────────────────────────────
 COBACO_CONFIG_DIR="/root/cobaco_config"
@@ -544,5 +549,5 @@ else
 fi
 php7.4 --version 2>/dev/null | head -1 || warn "PHP 7.4 は未インストール"
 node --version 2>/dev/null || true
-pm2 --version 2>/dev/null || true
+echo "pm2 $(pm2_version 2>/dev/null)" || true
 mariadb --version 2>/dev/null || true

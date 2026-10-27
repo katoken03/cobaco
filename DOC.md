@@ -181,7 +181,6 @@ MariaDB のエラーは多くの構成で **syslog / journald** に出る（`log
 
 対象パス:
 
-- `/root/.pm2/pm2.log`, `/root/.pm2/logs/*.log`
 - `/home/cobaco/.pm2/pm2.log`, `/home/cobaco/.pm2/logs/*.log`
 
 ポリシー: **daily**, **rotate 14**, **maxsize 50M**, **compress**, **delaycompress**, **copytruncate**（PM2 がログ FD を開いたままでも切り詰め可能）。Nginx の保持日数に合わせている。
@@ -281,6 +280,35 @@ fail2ban-client status sshd
 fail2ban-client get sshd actions          # nftables が表示される
 nft list table inet f2b-table             # ルールに dport の条件が無いこと
 ```
+
+## OS の調整（configure-os.sh）
+
+`setup.sh` および単体の `configure-os.sh` が次の 3 点を冪等に適用する。
+
+| 項目 | 内容 | 理由 |
+|------|------|------|
+| ICMP リダイレクト | `/etc/sysctl.d/60-cobaco.conf` で `net.ipv4.conf.{all,default,*}.send_redirects = 0`（毎回上書き） | ルーターではない（`ip_forward = 0`）ので送る必要がない。実効値は `all` と各インターフェースの OR なので、既存の eth0 にも効くよう glob 行を置く |
+| 不要サービス | `ModemManager` / `udisks2` / `upower` を `disable --now` して `mask` | VPS にモデム・取り外せるディスク・バッテリーはない。使わない特権デーモンを減らす。未インストールならスキップ |
+| root の PM2 | root の God Daemon が動いていて、アプリが 0 件なら `pm2 kill` | アプリは cobaco の PM2（`pm2-cobaco.service`）で動かす。root にアプリがあれば止めずに警告する |
+
+PM2 はデーモンがないとき、`pm2 --version` などのコマンドを実行しただけで起動する。**root では `pm2` を実行しない**。`setup.sh` は PM2 のバージョンを `package.json` から読む。
+
+**適用（root）**:
+
+```bash
+cd /root/cobaco && git pull
+bash configure-os.sh
+```
+
+**確認**:
+
+```bash
+sysctl -a 2>/dev/null | awk '/send_redirects/'   # すべて 0
+systemctl is-enabled ModemManager udisks2 upower  # masked
+ps -eo user,cmd | awk '/God Daemon/'              # cobaco の 1 本だけ
+```
+
+**サービスを戻すとき**: `systemctl unmask <unit> && systemctl enable --now <unit>`
 
 ## サーバー監視（異常通知）
 
