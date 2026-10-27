@@ -738,9 +738,15 @@ validate_domain_config() {
 
         validate_php_settings "$domain"
 
-        if [[ "$DRY_RUN" == false ]]; then
-            if ! systemctl is-active --quiet "php${php_version}-fpm"; then
-                die "[${domain}] PHP ${php_version}-FPM が起動していません。\n  インストール: apt install php${php_version}-fpm && systemctl start php${php_version}-fpm"
+        if ! systemctl is-active --quiet "php${php_version}-fpm"; then
+            # apply-php-fpm-services.sh が止めたバージョンは起動し直す
+            if ! systemctl list-unit-files --no-legend "php${php_version}-fpm.service" 2>/dev/null | grep -q "^php${php_version}-fpm.service"; then
+                die "[${domain}] PHP ${php_version}-FPM がインストールされていません。\n  インストール: apt install php${php_version}-fpm && systemctl start php${php_version}-fpm"
+            elif [[ "$DRY_RUN" == true ]]; then
+                info "[DRY-RUN] [${domain}] PHP ${php_version}-FPM を起動予定"
+            else
+                systemctl enable --now "php${php_version}-fpm"
+                info "[${domain}] PHP ${php_version}-FPM を起動しました"
             fi
         fi
     fi
@@ -958,4 +964,9 @@ if [[ "$ADD_ALL" == true ]]; then
     success "全ドメインの設定が完了しました。"
 else
     apply_domain "$TARGET_DOMAIN"
+fi
+
+# 使っていない PHP-FPM の停止 (確認あり)
+if [[ "$DRY_RUN" == false ]]; then
+    bash "${SCRIPT_DIR}/apply-php-fpm-services.sh"
 fi

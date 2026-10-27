@@ -28,6 +28,7 @@ cobaco/
 ├── configure-fail2ban.sh # fail2ban sshd jail (BAN は全ポート遮断)
 ├── configure-os.sh       # OS: ICMP リダイレクト無効化・不要サービス mask・root PM2 停止
 ├── apply-php-fpm-ini.sh  # バージョン共通 FPM ini の配置と FPM reload
+├── apply-php-fpm-services.sh # domains.yml で使わない PHP-FPM を停止 (確認あり)
 ├── apply-mysql.sh        # domains.yml の mysql 宣言を MariaDB に適用
 ├── install-composer.sh   # Composer phar + ディレクトリ連動ランチャー (root)
 ├── add-domain.sh         # ドメイン追加・Nginx 設定生成

@@ -29,6 +29,28 @@ Nginx の `fastcgi_pass` はサイト専用ソケット `/run/php/php<ver>-fpm-<
 
 `php_version` を変更したときは、古いバージョンの `pool.d/<domain>.conf` リンクを外し、新バージョンに張り直して両方の FPM を reload する。
 
+### 使っていない PHP-FPM の停止（apply-php-fpm-services.sh）
+
+`domains.yml` で使っているバージョンの FPM だけを動かす。`setup.sh` は全バージョンを enable・start するので、最後にこのスクリプトを呼んで止める。`add-domain.sh` も最後に呼ぶ。`php_version` を変えて使われなくなった旧バージョンも、ここで止める候補になる。
+
+| 判定 | 条件 | 動作 |
+|------|------|------|
+| 使う | `type: php` のドメインの `php_version`、または `pool.d/` にドメイン用プール（`www.conf` 以外の `*.conf`）がある | 止まっていれば `enable --now`。プールだけ残っているバージョンは警告して止めない |
+| 使わない | 上記以外で active か enabled | 一覧を表示し、`不要な PHP-FPM を停止しますか? [y/N]` で y のときだけ `disable --now` |
+
+- **mask しない**。あとでそのバージョンのドメインを追加すると、`add-domain.sh` が `enable --now` で起動する
+- `domains.yml` がないとき（初回セットアップ）は何もしない。端末がないときは確認できないので止めない
+- `monitor.sh` は enabled な FPM だけを監視するので、止めたバージョンで通知は出ない
+- CLI（`cobaco-php` / `composer`）は FPM と別なので、止めても使える
+
+```bash
+bash apply-php-fpm-services.sh --dry-run  # 表示のみ
+bash apply-php-fpm-services.sh            # 確認してから停止 (root)
+bash apply-php-fpm-services.sh --yes      # 確認せずに停止
+```
+
+戻すとき: `systemctl enable --now php<ver>-fpm`（または `domains.yml` に書いて `add-domain.sh` を実行）
+
 ### Web 実行ユーザーと Unix グループ
 
 サイト別 FPM プールの `user` / `group` は `www-data` のまま（[templates/php-fpm-pool.conf.tmpl](templates/php-fpm-pool.conf.tmpl)）。Nginx も `user www-data` で動く。
