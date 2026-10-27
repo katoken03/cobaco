@@ -207,7 +207,7 @@ ConoHa VPS 2.0 など **コントロールパネルにファイアウォール�
 | 種別 | 既定で許可する TCP | 備考 |
 |------|-------------------|------|
 | Web | 80, 443 | `WEB_TCP_PORTS` で変更可 |
-| SSH | `ssh.socket` の ListenStream から自動検出（例: 22000） | 非 22 のとき `OpenSSH` / 22 ルールを削除 |
+| SSH | `ssh.socket` の ListenStream から自動検出（例: 22000） | 許可リスト `/root/cobaco_config/ssh-allow.list` があれば、その IP からのみ許可（下記）。無ければ Anywhere（非 22 のとき `OpenSSH` / 22 ルールを削除） |
 | メール | 587, 465, 993, 995 | `MAIL_TCP_PORTS` で変更可。**25 は許可しない**（スクリプト内で除外） |
 | その他 | 拒否 | 既定 incoming: reject |
 
@@ -225,6 +225,35 @@ ufw status verbose
 
 **monitor との整合**: `monitor.yml` の `public_ports.extra_tcp` に UFW で開けた追加ポート（メール等）を書く。省略時は SSH 実ポート + 80 + 443 のみが許可リストになる。
 
+### SSH 接続元の許可リスト（ssh-allow）
+
+SSH は許可リストに載せた接続元 IP（または CIDR）からだけ受け付ける。リストの管理コマンドは `ssh-allow`（root 専用）。`configure-firewall.sh` が `/usr/local/sbin/ssh-allow` と `/usr/local/lib/cobaco/ssh-allow.sh` に配置する（実体は `bin/ssh-allow` と `lib/ssh-allow.sh`）。
+
+| 項目 | 内容 |
+|------|------|
+| 許可リスト | `/root/cobaco_config/ssh-allow.list`（Git 外、`600`）。1 行 1 件で「IP または CIDR　メモ」。`#` 以降と空行は無視 |
+| UFW | 各 SSH ポートに `allow proto tcp from <IP> to any port <port>`（コメント `SSH allow: <メモ>`）。リストに無い接続元の SSH ルールと Anywhere の SSH ルールは削除する |
+| fail2ban | 許可リストの IP を `/etc/fail2ban/jail.d/cobaco-ignoreip.local` の `ignoreip` に入れ、BAN 対象から外す |
+| 状態 | **オン**: 許可リストに 1 件以上ある。**オフ**: `ssh-allow off` 済み（リストは `ssh-allow.list.disabled` に退避）。**未設定**: どちらも無い |
+| オフ・未設定のとき | SSH は Anywhere で許可（新規 VPS の初回セットアップで締め出さないため）。`configure-firewall.sh` は未設定なら警告、オフなら「意図して公開中」と表示する |
+| 最後の 1 件 | オンの間は削除できない。入れ替えるときは先に新しい IP を追加してから古い IP を削除する。絞り込みをやめるなら `ssh-allow off` |
+
+```bash
+ssh-allow                          # 番号メニュー（1 一覧 / 2 追加 / 3 削除 / 4 再適用 / 5 オン/オフ / 0 終了）
+ssh-allow list                     # 状態、許可リスト、UFW の SSH ルール。ずれがあれば警告
+ssh-allow add 203.0.113.5 office   # 追加して即適用（オフ中はリストに追加するだけ）
+ssh-allow remove 2                 # 番号または IP で削除して即適用
+ssh-allow apply                    # リストを手で編集したあとなどに再適用（冪等）
+ssh-allow off                      # 絞り込みをやめて SSH を全体に公開（確認あり。Anywhere を入れてから IP ごとのルールを削除）
+ssh-allow on                       # 退避したリストで絞り込みを再開
+```
+
+**接続元を絞らないサーバー**（拠点の IP が決まらないクライアント向けなど）では、`setup.sh` の後に `ssh-allow off` を実行しておく。SSH は全体に公開されるが、公開鍵認証のみ・fail2ban の全ポート BAN は有効のまま。未設定のままでも動作は同じだが、`configure-firewall.sh` のたびに警告が出る。
+
+ルールは「許可 IP を追加 → 古いルールを削除」の順に変えるので、作業中の SSH セッションは切れない。今の SSH 接続元を含む IP を削除しようとすると確認を求める。
+
+**新しい IP から接続したいとき**: ConoHa のコントロールパネルでコンソールを開いて root でログインし、`ssh-allow` を実行して `2`（追加）を選ぶ。入力は IP（数字とドット）とメモだけで済む。
+
 ## fail2ban（SSH ブルートフォース対策）
 
 `setup.sh` および単体の `configure-fail2ban.sh` が sshd jail を冪等に設定する。BAN した IP は **全ポートで遮断**する（`banaction = %(banaction_allports)s` → `nftables[type=allports]`）。SSH を 22 以外（例: 22000）で待ち受けていても、ポート指定の漏れで BAN が効かなくなることはない。
@@ -232,6 +261,7 @@ ufw status verbose
 | 項目 | 値 |
 |------|-----|
 | 生成ファイル | `/etc/fail2ban/jail.d/cobaco-sshd.local`（毎回上書き。手で編集しない） |
+| ignoreip | `/etc/fail2ban/jail.d/cobaco-ignoreip.local`（`ssh-allow` が SSH 許可リストから生成） |
 | backend | `systemd`（journal の `ssh.service` を監視） |
 | bantime / findtime / maxretry | 86400 / 600 / 5（`F2B_SSHD_BANTIME` / `F2B_SSHD_FINDTIME` / `F2B_SSHD_MAXRETRY` で変更可） |
 

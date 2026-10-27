@@ -33,7 +33,10 @@ cobaco/
 ├── composer-paths.yml.sample  # Composer 用 PHP バージョンのパス対応（Git 外本番用）
 ├── bin/composer          # ランチャー本体 → install-composer.sh が /usr/local/bin に配置
 ├── bin/cobaco-php        # PHP CLI シム → /usr/local/bin/cobaco-php と cobaco ~/bin/php
+├── bin/ssh-allow         # SSH 接続元 IP の許可リスト管理 → /usr/local/sbin/ssh-allow (root)
 ├── lib/resolve-composer-php.sh
+├── lib/ssh-allow.sh      # 許可リストと UFW / fail2ban ignoreip の同期
+
 ├── deploy.sh             # git pull + ビルド + 再起動
 ├── monitor.sh            # サーバー異常検知と Webhook 通知
 ├── install-monitor.sh    # monitor の systemd timer / logrotate 配置
@@ -70,7 +73,7 @@ bash deploy.sh example.com
 
 | ユーザー | 役割 |
 |---|---|
-| `root` | 管理者。SSH は公開鍵のみ（接続元 IP はファイアウォール等で限定）。`setup.sh` / `add-domain.sh` を実行する |
+| `root` | 管理者。SSH は公開鍵のみ（接続元 IP は `ssh-allow` で UFW に登録した IP に限定）。`setup.sh` / `add-domain.sh` を実行する |
 | `cobaco` | 日常作業・デプロイ。`deploy.sh` を実行する。sudo は `systemctl reload` のみ |
 
 詳細は [DOC.md](./DOC.md) のユーザー表を参照。

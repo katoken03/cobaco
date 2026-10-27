@@ -185,4 +185,6 @@ sudo -u cobaco bash -lc 'export NVM_DIR=/opt/nvm; . "$NVM_DIR/nvm.sh"; pm2 start
 ## セキュリティ上の注意
 
 - root SSH を許可する前提は、**接続元 IP の制限**と**公開鍵のみ**の組み合わせとする。パスワード認証は無効のままにすること。
+- 接続元 IP の制限は `setup.sh` の後に `ssh-allow add <IP> <メモ>`（root）で行う。最初の 1 件を登録した時点で SSH の Anywhere 許可が消え、登録した IP からだけ接続できるようになる。新しい IP から入れないときは VPS のコンソールで root ログインし、`ssh-allow` のメニューから追加する（[DOC.md](DOC.md)「SSH 接続元の許可リスト」）。接続元を絞らないサーバーでは `ssh-allow off` で意図して公開中であることを記録する。
+- コンソールから入れるよう、root のパスワードは設定しておく（SSH のパスワードログインは無効なので、パスワードはコンソール専用になる）。
 - `setup.sh` / `add-domain.sh` は root で実行する（`sudo` は不要）。
