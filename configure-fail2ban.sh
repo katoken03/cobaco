@@ -74,7 +74,9 @@ fi
 
 systemctl enable fail2ban.service >/dev/null 2>&1 || true
 if systemctl is-active --quiet fail2ban.service; then
-    fail2ban-client reload
+    # action 名 (nftables) が同じだと通常の reload では nft ルールが作り直されないため jail ごと再起動する。
+    # BAN 中の IP は fail2ban の DB から復元される
+    fail2ban-client reload --restart sshd
 else
     systemctl start fail2ban.service
 fi
