@@ -110,6 +110,10 @@ cmd_list() {
     done
     ((${#rules[@]} == 0)) && echo "  (なし)"
 
+    echo
+    echo "SSH を許可する IP の追加: ssh-allow add <IP> <メモ>   (例: ssh-allow add 203.0.113.5 office)"
+    echo "削除: ssh-allow remove <番号>   / メニューで操作: ssh-allow"
+
     [[ "$state" == on ]] || return 0
     local drift="$open" addr
     for entry in "${entries[@]}"; do
