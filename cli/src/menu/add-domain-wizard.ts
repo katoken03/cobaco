@@ -329,7 +329,7 @@ function printSummary(entry: Domain | null, results: StepResult[]): void {
 
   console.log('');
   console.log('この後必要に応じて:');
-  console.log('  - DB・ベーシック認証・php_settings は domains.yml を編集してから「ドメイン設定を適用」');
+  console.log('  - DB・ベーシック認証・php_settings・path_info は domains.yml を編集してから「ドメイン設定を適用」');
   if (!entry.ssl) {
     console.log('  - DNS を設定したら domains.yml の ssl を true にして「ドメイン設定を適用」');
   }

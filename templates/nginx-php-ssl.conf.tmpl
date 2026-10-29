@@ -26,11 +26,13 @@ server {
         try_files $uri $uri/ /index.php?$query_string;
     }
 
-    location ~ \.php$ {
+    location {{PHP_LOCATION}} {
+{{PATH_INFO}}
         fastcgi_pass unix:/run/php/php{{PHP_VERSION}}-fpm-{{DOMAIN}}.sock;
         fastcgi_index index.php;
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+{{PATH_INFO_PARAM}}
         fastcgi_param HTTP_PROXY "";
     }
 

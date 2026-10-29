@@ -11,6 +11,7 @@ export type Domain = {
   www_redirect?: boolean;
   ssl?: boolean;
   ssl_subdomains?: string[];
+  path_info?: boolean;
   basic_auth?: {
     title: string;
     users: { id: string; password: string }[];

@@ -240,18 +240,59 @@ sync_basic_auth_htpasswd() {
     fi
 }
 
+# ─────────────────────────────────────────────
+# PATH_INFO ヘルパー (/index.php/foo/bar 形式の URL)
+# ─────────────────────────────────────────────
+path_info_enabled() {
+    local domain="$1"
+    local path_info
+    path_info=$(yq e ".domains[] | select(.name == \"${domain}\") | .path_info" "$DOMAINS_FILE")
+    [[ "$path_info" == "true" ]]
+}
+
+validate_path_info_config() {
+    local domain="$1"
+    local type path_info
+    path_info=$(yq e ".domains[] | select(.name == \"${domain}\") | .path_info" "$DOMAINS_FILE")
+    [[ "$path_info" == "null" ]] && return 0
+    [[ "$path_info" == "true" || "$path_info" == "false" ]] \
+        || die "[${domain}] path_info は true または false で指定してください。(指定値: ${path_info})"
+    type=$(yq e ".domains[] | select(.name == \"${domain}\") | .type" "$DOMAINS_FILE")
+    [[ "$path_info" == "false" || "$type" == "php" ]] \
+        || die "[${domain}] path_info は type: php のときのみ指定できます。"
+}
+
 render_nginx_template() {
     local domain="$1"
     local rendered="$2"
     local basic_auth_block line
+    local php_location='~ \.php$'
+    local path_info_block='' path_info_param=''
 
     basic_auth_block=$(generate_basic_auth_nginx_block "$domain")
+
+    if path_info_enabled "$domain"; then
+        php_location='~ [^/]\.php(/|$)'
+        # 実在しない .php への PATH_INFO 付きリクエストは PHP に渡さない
+        path_info_block=$'        fastcgi_split_path_info ^(.+?\\.php)(/.*)$;\n        if (!-f $document_root$fastcgi_script_name) {\n            return 404;\n        }'
+        path_info_param='        fastcgi_param PATH_INFO $fastcgi_path_info;'
+    fi
 
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" == "{{BASIC_AUTH}}" ]]; then
             if [[ -n "$basic_auth_block" ]]; then
                 printf '%s\n' "$basic_auth_block"
             fi
+        elif [[ "$line" == "{{PATH_INFO}}" ]]; then
+            if [[ -n "$path_info_block" ]]; then
+                printf '%s\n' "$path_info_block"
+            fi
+        elif [[ "$line" == "{{PATH_INFO_PARAM}}" ]]; then
+            if [[ -n "$path_info_param" ]]; then
+                printf '%s\n' "$path_info_param"
+            fi
+        elif [[ "$line" == *"{{PHP_LOCATION}}"* ]]; then
+            printf '%s\n' "${line//\{\{PHP_LOCATION\}\}/$php_location}"
         else
             printf '%s\n' "$line"
         fi
@@ -773,6 +814,7 @@ validate_domain_config() {
 
     validate_basic_auth_config "$domain"
     validate_ssl_subdomains_config "$domain"
+    validate_path_info_config "$domain"
 
     # DNS 解決確認 (警告のみ)
     if ! host "$domain" &>/dev/null 2>&1; then

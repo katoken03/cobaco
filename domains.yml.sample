@@ -24,6 +24,8 @@
 #                  省略したキーはその php_version 共通設定のまま
 #                  例: memory_limit, upload_max_filesize, post_max_size,
 #                      max_execution_time, display_errors など (DOC.md 参照)
+#   path_info    : type: php のとき任意。true で /index.php/foo/bar 形式の URL を PHP に渡す
+#                  ($_SERVER['PATH_INFO'] を設定。省略時: false。DOC.md 参照)
 #   basic_auth   : サイト全体のベーシック認証 (省略時: 無効)
 #     title      : 認証ダイアログに表示するタイトル (必須)
 #     users      : ユーザー一覧 (1 人以上)
@@ -75,6 +77,7 @@ domains:
     php_version: "7.4"
     www_redirect: false
     ssl: true
+    path_info: true
 
   - name: app.example.com
     type: nodejs

@@ -40,7 +40,7 @@ root で「ドメイン → 新しいドメインを追加」を選ぶと、次�
 5. リポジトリ URL とブランチを入力し、cobaco ユーザーで `/var/www/<name>` に `git init` → `remote add origin` → `fetch` → `checkout -t origin/<branch>` を実行する。add-domain.sh が先に `conf/` などを作っているため `git clone` は使わない。SSH 形式の URL では `/home/cobaco/.ssh/id_ed25519` がなければ作成し、公開鍵を表示するので、リポジトリの Deploy key（読み取り専用）に登録してから進める。初回の fetch だけ `StrictHostKeyChecking=accept-new` を付ける
 6. `sudo -u cobaco -i bash deploy.sh [--branch X] <name>` で初回デプロイする
 
-mysql・basic_auth・php_settings はウィザードでは入力しない。必要なら `domains.yml` を編集してから「ドメイン設定を適用」を実行する。
+mysql・basic_auth・php_settings・path_info はウィザードでは入力しない。必要なら `domains.yml` を編集してから「ドメイン設定を適用」を実行する。
 
 ### メニュー項目の追加
 
@@ -81,6 +81,24 @@ Nginx の `fastcgi_pass` はサイト専用ソケット `/run/php/php<ver>-fpm-<
 |------|----------------|
 | `memory_limit`, `upload_max_filesize`, `post_max_size`, `max_execution_time`, `max_input_time`, `max_input_vars`, `error_reporting`, `date.timezone` | `php_admin_value[...]` |
 | `display_errors`, `display_startup_errors` | `php_admin_flag[...]` (`On` / `Off`) |
+
+### domains.yml の `path_info`（任意）
+
+`/memo.php/category/3` のように、`.php` のあとにパスが続く URL（PATH_INFO）を使うアプリ向けの設定。`type: php` のときだけ指定でき、省略したときは `false` になる。
+
+| 値 | Nginx の PHP location |
+|----|------------------------|
+| `false`（既定） | `location ~ \.php$`。`.php` で終わる URL だけを PHP に渡す。`/memo.php/foo` は `try_files` で `/index.php` に回される |
+| `true` | `location ~ [^/]\.php(/\|$)` に `fastcgi_split_path_info ^(.+?\.php)(/.*)$;` と `fastcgi_param PATH_INFO $fastcgi_path_info;` を追加する。`$_SERVER['PATH_INFO']` に `/foo` が入る |
+
+`true` にすると、スクリプトが存在しないときは `if (!-f $document_root$fastcgi_script_name) { return 404; }` で PHP に渡さずに 404 を返す。たとえば `/uploads/a.jpg/x.php` を `a.jpg` のスクリプトとして実行させる攻撃を防ぐため。
+
+```yaml
+  - name: mac.example.com
+    type: php
+    php_version: "8.5"
+    path_info: true
+```
 
 `php_version` を変更したときは、古いバージョンの `pool.d/<domain>.conf` リンクを外し、新バージョンに張り直して両方の FPM を reload する。
 
