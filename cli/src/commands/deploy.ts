@@ -1,4 +1,4 @@
-import { run, SCRIPT_DIR } from '../lib/shell';
+import { runOrExit, SCRIPT_DIR } from '../lib/shell';
 
 export async function deploy(args: string[]): Promise<void> {
   if (args.includes('-h') || args.includes('--help')) {
@@ -21,5 +21,5 @@ export async function deploy(args: string[]): Promise<void> {
     process.exit(1);
   }
 
-  await run(['bash', `${SCRIPT_DIR}/deploy.sh`, ...args]);
+  await runOrExit(['bash', `${SCRIPT_DIR}/deploy.sh`, ...args]);
 }

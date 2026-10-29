@@ -2,6 +2,37 @@
 
 詳細は [AGENTS.md](./AGENTS.md) を参照。ここでは運用上のパスとログローテーションを記載する。
 
+## cobaco コマンド（対話メニュー）
+
+どのスクリプトをいつ使うか迷ったら、引数なしで `cobaco` を実行する。矢印キー（または番号キー）と Enter で項目を選ぶと、カーソル位置の項目の用途が下に表示される。対象ドメインは `domains.yml` から選び、実行前に同等のシェルコマンド（例: `bash add-domain.sh --dry-run example.com`）を表示して確認する。Ctrl+C で実行中のスクリプトだけを止め、メニューに戻る。
+
+| 実行ユーザー | 表示される項目 |
+|---|---|
+| root | ドメイン設定の適用・DB・PHP・セキュリティ・監視・初期構築（root 用スクリプト全部）とドメイン一覧 |
+| cobaco | ドメイン一覧・デプロイ |
+
+スクリプトは sudo を使わず、実行したユーザーのままリポジトリ直下から `bash <script>` で呼ぶ。サブコマンド（`cobaco list` / `cobaco apply <domain>` / `cobaco deploy <domain>` / `cobaco setup`）も従来どおり使える。
+
+| 項目 | パス |
+|---|---|
+| ソース | `cli/`（Bun + TypeScript、`@inquirer/prompts`） |
+| バイナリ | `cli/cobaco`（`bun build --compile`。Git 管理外） |
+| コマンド | `/usr/local/bin/cobaco` → `cli/cobaco` のシンボリックリンク（リンク先からリポジトリ直下を探す） |
+| bun | `/usr/local/lib/bun/bin/bun`（ビルド専用。実行時には不要） |
+
+### 導入・更新（root）
+
+```bash
+cd /root/cobaco && git pull
+bash install-cli.sh    # bun の導入・ビルド・/usr/local/bin/cobaco の配置 (再実行で再ビルド)
+```
+
+cobaco ユーザーから使うには、リポジトリ（`cli/cobaco` と各スクリプト）と `/root/cobaco_config/domains.yml` を cobaco が読める必要がある（`chmod 711 /root` など）。
+
+### メニュー項目の追加
+
+スクリプトを追加・変更したら [`cli/src/menu/catalog.ts`](cli/src/menu/catalog.ts) にも登録する。1 項目は `label`（名前）・`when`（どういう時に使うか）・`user`（`root` / `cobaco` / `any`）・`build`（引数を対話で集めて実行コマンドを返す）で書く。ドメイン選択・dry-run 選択・テキスト入力は [`cli/src/menu/inputs.ts`](cli/src/menu/inputs.ts) の関数を使う。開発時は `cd cli && COBACO_DOMAINS=../domains.yml bun run dev` で手元の `domains.yml` を読ませて確認できる。
+
 ## PHP 設定
 
 Web (PHP-FPM) 向けの PHP 設定は次の3層に分ける。CLI (`php`, `composer`, `artisan`) にはサイト設定は効かず、`/etc/php/<ver>/cli/php.ini` を使う。
@@ -219,6 +250,40 @@ MariaDB のエラーは多くの構成で **syslog / journald** に出る（`log
 systemctl status logrotate.timer
 logrotate -d /etc/logrotate.d/cobaco-pm2   # ドライラン
 journalctl --disk-usage
+```
+
+## Nginx の既定サーバー（catch-all）
+
+どの `server_name` にも一致しない Host / SNI のリクエスト（IP 直打ち、偽の Host ヘッダ、他人が DNS をこのサーバーに向けたドメイン）は、catch-all の `default_server` で拒否する。これが無いと Nginx は最初に読み込んだサイトを既定として扱い、そのサイトが表示されてしまう（Host ヘッダインジェクションや証明書からのドメイン名漏えいの原因になる）。
+
+| 項目 | 内容 |
+|------|------|
+| テンプレート | [templates/nginx-default.conf](templates/nginx-default.conf) |
+| 配置先 | `/etc/nginx/sites-available/cobaco-default` → `sites-enabled/cobaco-default` |
+| HTTP (80) | `return 444`（レスポンスを返さずに切断） |
+| HTTPS (443) | `ssl_reject_handshake on`（証明書を送らずにハンドシェイクを拒否。nginx 1.19.4 以降） |
+| ログ | `/var/log/nginx/default-catchall-access.log` / `default-catchall-error.log` |
+
+`setup.sh` と単体の `configure-nginx-default.sh` が冪等に配置する。`nginx -t` に失敗したら配置前の状態に戻して終了する。nginx が 1.19.4 未満のときは 443 のブロックを除き、HTTP の catch-all だけ配置する。
+
+各ドメインの server ブロックには `default_server` を付けない。HTTP のみのテンプレートも `listen [::]:80;` を持つ（無いと IPv6 経由のアクセスが catch-all に入り 444 になる）。
+
+**既存サーバーへの適用（root）**:
+
+```bash
+cd /root/cobaco && git pull
+bash configure-nginx-default.sh
+# HTTP のみ（証明書なし）のドメインがあれば [::]:80 を反映するため流し直す
+bash add-domain.sh <domain>
+```
+
+**確認**:
+
+```bash
+curl -sv http://<IP>/                          # Empty reply from server
+curl -sv -H 'Host: evil.example' http://<IP>/  # 同上
+openssl s_client -connect <IP>:443 -servername evil.example </dev/null  # ハンドシェイク失敗
+curl -sI https://<正規ドメイン>/                # 従来どおり応答
 ```
 
 ## ファイアウォール（UFW）

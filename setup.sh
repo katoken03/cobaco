@@ -109,6 +109,9 @@ if [[ -L /etc/nginx/sites-enabled/default ]]; then
     info "デフォルトサイトを無効化しました。"
 fi
 
+# 未知の Host / SNI を拒否する catch-all (default_server)
+bash "${SCRIPT_DIR}/configure-nginx-default.sh"
+
 # セキュリティヘッダー設定 (server_tokens は nginx.conf に既に定義されているため除外)
 cat > /etc/nginx/conf.d/security.conf << 'EOF'
 add_header X-Frame-Options SAMEORIGIN;
@@ -544,6 +547,7 @@ echo "次のステップ:"
 echo "  1. domains.yml.sample を ${COBACO_CONFIG_DIR}/domains.yml にコピーして編集する"
 echo "     (cobaco が読めるよう: chmod 711 /root && chmod 644 ${COBACO_CONFIG_DIR}/domains.yml)"
 echo "  2. bash add-domain.sh <ドメイン名> を実行する (root)"
+echo "  3. bash install-cli.sh で cobaco コマンド (対話メニュー) を導入する"
 echo ""
 info "インストール済みバージョン:"
 nginx -v 2>&1 || true

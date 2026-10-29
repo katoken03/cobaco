@@ -1,4 +1,4 @@
-import { run, SCRIPT_DIR } from '../lib/shell';
+import { runOrExit, SCRIPT_DIR } from '../lib/shell';
 
 export async function apply(args: string[]): Promise<void> {
   if (args.includes('-h') || args.includes('--help')) {
@@ -7,7 +7,7 @@ export async function apply(args: string[]): Promise<void> {
     console.log('       cobaco apply --dry-run <domain>');
     console.log('');
     console.log('Apply domain config defined in domains.yml (Nginx, SSL, docroot).');
-    console.log('Requires sudo.');
+    console.log('Run as root.');
     console.log('');
     console.log('Options:');
     console.log('  --all        Apply all domains defined in domains.yml');
@@ -21,5 +21,5 @@ export async function apply(args: string[]): Promise<void> {
     process.exit(1);
   }
 
-  await run(['sudo', 'bash', `${SCRIPT_DIR}/add-domain.sh`, ...args]);
+  await runOrExit(['bash', `${SCRIPT_DIR}/add-domain.sh`, ...args]);
 }

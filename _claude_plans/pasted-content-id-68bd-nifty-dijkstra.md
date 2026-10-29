@@ -1,66 +1,92 @@
-# fail2ban sshd jail の修正（BAN を全ポート遮断にする）
+# SSH の接続元を許可リストの IP に限定し、管理コマンド `ssh-allow` を作る
 
 ## Context
-本番 VPS（cobaco_ecos_root）では SSH が 22000 番（`ssh.socket` の override）で待ち受けている。一方 fail2ban の sshd jail は `port` が既定の `ssh`（=22）のままなので、nft のルールは `tcp dport 22 ip saddr @addr-set-sshd reject` になっている。BAN された IP（今は 115.160.97.208）でも 22000 には接続できてしまい、BAN が効いていない。
+本番 VPS の UFW は `22000/tcp ALLOW Anywhere`（v4/v6）になっていて、SSH に世界中から接続できる（AGENTS.md の「接続元 IP は限定」と食い違っている）。これを許可リストに載せたグローバル IP からだけ接続できるようにする。
 
-`/etc/fail2ban/jail.local` は 2026-06-05 に手で作られたもので、cobaco リポジトリでは管理していない。`setup.sh` も fail2ban を apt で入れていない。このため別の VPS に同じ構成を再現すると、同じ穴が再発する。
+許可 IP の追加は頻繁に起き、新しい IP からは SSH できないため、作業は ConoHa コントロールパネルのコンソールから行うことになる。コンソールは使いにくい（コピペが効かない、記号の入力が怪しいことがある）ので、短いコマンド＋番号メニューで「一覧・追加・削除」ができるスクリプトを用意する。
+
+現状（読み取りで確認済み）:
+- root はパスワードあり（`passwd -S root` → `P`）なので、コンソールから root でログインできる。cobaco はロック中（`L`）。
+- サーバーにグローバル IPv6 アドレスはない。
+- いまの作業接続元は 115.162.28.152。
 
 ユーザーの決定:
-- BAN は **全ポート遮断**（`banaction_allports`）にする。SSH のポートを変えても設定漏れが起きない。
-- recidive jail は今回は入れない。
+- 初期の許可 IP は **115.162.28.152 のみ**。
+- 許可リストの **最後の 1 件は削除できない**（全員締め出しも、意図せぬ全開放も起こさない）。
+- 許可リストの IP は fail2ban の **ignoreip にも自動で入れる**。
 
 ## 方針
-`configure-firewall.sh` と同じ形の冪等なスクリプト `configure-fail2ban.sh` を新しく作る。`setup.sh` から呼び出し、単体でも再適用できるようにする。
+許可リストをファイルで宣言し、`ssh-allow` がそのファイルと UFW（＋fail2ban の ignoreip）を同期する。既存の `bin/composer` ＋ `lib/resolve-composer-php.sh` ＋ `install-composer.sh` と同じ「bin/ のランチャー＋ lib/ の共通処理を /usr/local に install する」形にそろえる。
 
-### 1. 新規: `configure-fail2ban.sh`（root で実行）
-- 冒頭のスタイルは `configure-firewall.sh` に揃える（`set -euo pipefail`、色付きの `info`/`success`/`warn`/`error`、root チェック）。
-- `fail2ban-client` が見つからなければ `apt-get install -y -qq fail2ban` を実行する。
-- `/etc/fail2ban/jail.d/cobaco-sshd.local` を毎回上書きで生成する。`jail.d/*.local` は `jail.local` より後に読まれるので、手書きの `jail.local` より優先される。
-  ```ini
-  # cobaco: configure-fail2ban.sh が生成。手で編集しない
-  [sshd]
-  enabled   = true
-  backend   = systemd
-  banaction = %(banaction_allports)s
-  bantime   = 86400
-  findtime  = 600
-  maxretry  = 5
-  ```
-  - `bantime`、`findtime`、`maxretry` は今の値を引き継ぐ。環境変数 `F2B_SSHD_BANTIME`、`F2B_SSHD_FINDTIME`、`F2B_SSHD_MAXRETRY` で上書きできるようにする（`configure-firewall.sh` の `MAIL_TCP_PORTS` と同じやり方）。
-  - `banaction_allports` は Debian 既定の `defaults-debian.conf` で `nftables[type=allports]` と定義済みなので、それを使う。
-- 既存の `/etc/fail2ban/jail.local` は消さずに残す。中身に `[sshd]` があれば「cobaco-sshd.local が優先される」と `warn` を出すだけにする。
-- `fail2ban-client -t` で設定を検査する。失敗したら生成したファイルを元に戻して終了する。
-- `systemctl enable --now fail2ban` を実行し、`fail2ban-client reload` で反映する。BAN 中の IP は fail2ban の DB から復元され、新しい allports ルールで塞がれ直す。
-- 最後に `fail2ban-client status sshd` を表示する。
+### 許可リストファイル（Git 外）
+`/root/cobaco_config/ssh-allow.list`（`domains.yml` と同じディレクトリ、`600 root:root`）
+```
+# IP または CIDR  メモ(任意)
+115.162.28.152  office
+```
+1 行 1 件。`#` 以降と空行は無視。
 
-### 2. `setup.sh`
-- `configure-firewall.sh` を呼んでいるブロック（「ファイアウォール設定」、498 行目付近）の直後に、同じ形式で fail2ban のブロックを追加する:
-  ```bash
-  info "fail2ban を設定中..."
-  bash "${SCRIPT_DIR}/configure-fail2ban.sh"
-  ```
-- 71 行目付近の基本パッケージのリストに `fail2ban` を追加する。
-- 作業ツリーにある未コミットの `setup.sh` の差分（www-data を cobaco グループに入れる変更）には触らない。コミットに含めるのは今回の変更部分だけにする（`git add -p`）。
+### 1. 新規: `lib/ssh-allow.sh`（共通関数。configure-firewall.sh と bin/ssh-allow の両方が source）
+- `ssh_allow_listen_ports`: `configure-firewall.sh` 29〜42 行目にある `ssh.socket` の ListenStream 検出処理をここへ移す（なければ 22）。
+- `ssh_allow_read_list`: リストを読んで「アドレス<TAB>メモ」を出力する。
+- `ssh_allow_normalize <addr>`: `python3 -c` の `ipaddress.ip_network(strict=False)` で検証・正規化する（`1.2.3.4` → `1.2.3.4`、`1.2.3.0/24` はそのまま、不正なら失敗）。ホスト部が立った CIDR は正規化後の値を使う。
+- `ssh_allow_apply`: UFW と fail2ban を許可リストに合わせる（冪等）。
+  1. リストが空・ファイルなし → **SSH の既存ルールに触らず** warn して終了（新しい VPS の初回セットアップで締め出されないため。`setup.sh` 実行直後は従来どおり Anywhere で開く）。
+  2. 各 SSH ポートと各エントリについて `ufw allow proto tcp from <addr> to any port <port> comment 'SSH allow: <メモ>'` を追加する（UFW は同じルールの二重登録をスキップするので冪等）。
+  3. **追加が終わってから**古いルールを消す: `ufw delete allow <port>/tcp`（Anywhere の v4/v6 両方）と `OpenSSH`、および `ufw status` に出ている `<port>/tcp ALLOW IN <addr>` のうちリストにない addr のルール（`ufw delete allow proto tcp from <addr> to any port <port>`）。
+  4. fail2ban: `/etc/fail2ban/jail.d/cobaco-ignoreip.local` を生成する。
+     ```ini
+     # cobaco: ssh-allow が生成。手で編集しない
+     [DEFAULT]
+     ignoreip = 127.0.0.1/8 ::1 115.162.28.152
+     ```
+     fail2ban が入っていれば `fail2ban-client -t` で検査してから `fail2ban-client reload`。ignoreip の変更は通常の reload で反映される。
 
-### 3. ドキュメント
-- `DOC.md`: 「ファイアウォール（UFW）」の節の後に「fail2ban」の節を追加する。内容は、生成するファイルのパス、全ポート遮断であること、既定値と環境変数、適用コマンドと確認コマンド。既存の logrotate の表（168 行目の fail2ban の行）はそのままにする。
-- `AGENTS.md`: ファイル構成に `configure-fail2ban.sh` の 1 行を追加する。
+### 2. 新規: `bin/ssh-allow`（root 専用コマンド）
+- 呼び出し方:
+  - `ssh-allow` → 番号メニュー（`1) 一覧  2) 追加  3) 削除  4) 再適用  0) 終了`）。コンソールで記号を打たずに済むよう、入力は数字・ドット・スラッシュ（CIDR のとき）だけにする。メモは任意入力。
+  - `ssh-allow list` / `add <IP> [メモ]` / `remove <番号|IP>` / `apply`（SSH からの通常運用やスクリプト用）
+- `list`: 番号付きでリストを表示し、続けて UFW 上の SSH ルール（`ufw status` の SSH ポート行）も表示する。リストと UFW がずれていれば「`ssh-allow apply` で同期できます」と出す。
+- `add`: 正規化 → 重複チェック → ファイルに追記 → `ssh_allow_apply`。
+- `remove`:
+  - 残りが 1 件なら拒否する。
+  - 消す IP が今の SSH 接続元（`$SSH_CLIENT` の先頭）を含む場合は、警告して `y` の確認を取る。
+  - ファイルから削除 → `ssh_allow_apply`。
+- リストファイルの書き換えは一時ファイルに書いてから `mv` で置き換える。
+- lib の読み込みは `bin/composer` と同じ方式: リポジトリ内の `../lib/ssh-allow.sh` があればそれを、なければ `/usr/local/lib/cobaco/ssh-allow.sh` を source する。
 
-## 本番への適用手順（実装後、root で実行）
+### 3. `configure-firewall.sh`
+- ポート検出を `lib/ssh-allow.sh` の関数に置き換える（動作は同じ）。
+- SSH ルール部分（58〜68 行目）は次のようにする:
+  - 許可リストがあり空でなければ → `ssh_allow_apply`（Anywhere を追加しない）。
+  - リストがなければ → 従来どおり（非 22 なら `<port>/tcp` を Anywhere で許可、22 なら `OpenSSH`）。そのうえで「`ssh-allow add <IP>` で接続元を限定してください」と warn を出す。
+- 最後に `install -m 644 lib/ssh-allow.sh /usr/local/lib/cobaco/ssh-allow.sh` と `install -m 755 bin/ssh-allow /usr/local/sbin/ssh-allow` を実行する（setup.sh は configure-firewall.sh を呼ぶので、新しい VPS にも入る）。
+
+### 4. ドキュメント
+- `DOC.md` の「ファイアウォール（UFW）」の節: SSH 行の説明を「許可リスト（`/root/cobaco_config/ssh-allow.list`）にある IP からのみ。リストなしなら Anywhere」に更新する。「SSH 接続元の許可リスト（ssh-allow）」の小節を追加する（ファイル形式、コマンド一覧、コンソールでの手順、最後の 1 件は削除不可、fail2ban ignoreip との連動）。fail2ban の節にも `cobaco-ignoreip.local` を 1 行追記する。
+- `SETUP_USERS.md`: SSH 設定のあとに「接続元 IP を限定する: `ssh-allow add <IP> <メモ>`」の手順を追加する。
+- `AGENTS.md`: ファイル構成に `bin/ssh-allow` と `lib/ssh-allow.sh` を追加し、「接続元 IP は ssh-allow で管理」と 1 行添える。
+- 作業ツリーにある既存の未コミット差分（setup.sh の www-data グループ追加、DOC.md / SETUP_USERS.md の関連記述）はコミットに含めない。今回分だけを index に組み立ててコミットする（前回と同じやり方）。
+
+## 本番への適用手順
+SSH の作業接続元 115.162.28.152 を先に登録するので、適用中に締め出されることはない（ルールは「追加 → 古いものを削除」の順）。万一に備えて ConoHa のコンソールを開いておいてから実施する。
 ```bash
-cd /root/cobaco && git pull
-bash configure-fail2ban.sh
+cd /root/cobaco && git pull --ff-only
+bash configure-firewall.sh            # ssh-allow を /usr/local に配置（リストはまだないので SSH は従来どおり）
+ssh-allow add 115.162.28.152 office   # ここで Anywhere が消え、許可 IP のみになる
 ```
 
 ## 検証
-1. ローカル: `bash -n configure-fail2ban.sh`。shellcheck が使えれば `shellcheck configure-fail2ban.sh` も実行する。
-2. 本番で適用した後に確認する（読み取りのみ）:
-   - `fail2ban-client -d | grep -i "sshd.*action"`: 使われている action が `nftables[type=allports]` になっていること。
-   - `nft list table inet f2b-table`: ルールが `ip saddr @addr-set-sshd reject ...` になり、`dport 22` の条件が消えていること。
-   - `fail2ban-client status sshd`: 115.160.97.208 が引き続き BAN 中であること（期限は 2026-10-27 16:32 JST）。
-   - `fail2ban-client get sshd banaction`
-3. 実際に BAN されるかの確認（任意）: 自分の IP 以外の検証用ホストから 22000 に 5 回ログインに失敗し、BAN されて 22000 にも 443 にもつながらなくなることを確かめる。終わったら `fail2ban-client set sshd unbanip <IP>` で解除する。自分の作業用 IP は BAN されないよう、検証は別のホストで行う。
-4. 再実行しても差分が出ない（冪等である）ことを確かめる: `configure-fail2ban.sh` をもう一度実行し、エラーにならず同じファイル内容になること。
+1. ローカル: `bash -n` を lib/ssh-allow.sh・bin/ssh-allow・configure-firewall.sh に実行する。
+2. 本番:
+   - `ufw status numbered`: SSH は `22000/tcp ALLOW IN 115.162.28.152` だけになり、`22000/tcp ALLOW IN Anywhere`（v4/v6）が消えていること。80/443 など他のルールはそのままであること。
+   - 新しい SSH セッションを 115.162.28.152 から開けること（今のセッションは閉じずに確認する）。
+   - `ssh-allow list` が 1 件とずれなしを表示すること。`ssh-allow remove 1` が「最後の 1 件は削除できません」で拒否されること。
+   - `ssh-allow add 192.0.2.10 test` → ufw に追加されること → `ssh-allow remove 192.0.2.10` で消えること（192.0.2.0/24 はドキュメント用アドレスなので無害）。
+   - `fail2ban-client get sshd ignoreip` に 115.162.28.152 が入っていること。
+   - `ssh-allow apply` を 2 回実行して、ルールが増減しないこと（冪等）。
+   - 引数なしの `ssh-allow` のメニューが動くこと（SSH 上で操作）。
+3. 外部から: 許可していない回線（例: スマホのテザリング）から `ssh -p 22000` してタイムアウト／拒否されること（任意。ユーザーに依頼）。
 
 ## コミット
-`feat(fail2ban): add configure-fail2ban.sh to ban on all ports for sshd jail`（Conventional Commits、英語、Co-Authored-By を付ける）
+`feat(firewall): restrict SSH to allowlisted IPs and add ssh-allow command`（Conventional Commits、英語、Co-Authored-By を付ける）

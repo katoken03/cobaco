@@ -2,11 +2,13 @@ import { setup } from './commands/setup';
 import { apply } from './commands/apply';
 import { deploy } from './commands/deploy';
 import { list } from './commands/list';
+import { runMenu } from './menu';
 
 function printHelp(): void {
   console.log('cobaco <command> [options]');
   console.log('');
   console.log('Commands:');
+  console.log('  (none) / menu         Interactive menu (arrow keys or numbers + Enter)');
   console.log('  setup                 Run initial VPS setup');
   console.log('  list                  List all domains defined in domains.yml');
   console.log('  apply <domain>        Apply domain config defined in domains.yml');
@@ -19,6 +21,7 @@ function printHelp(): void {
   console.log('  -h, --help            Show help');
   console.log('');
   console.log('Examples:');
+  console.log('  cobaco');
   console.log('  cobaco setup');
   console.log('  cobaco apply example.com');
   console.log('  cobaco apply --dry-run example.com');
@@ -29,12 +32,20 @@ function printHelp(): void {
 
 const [,, subcommand, ...args] = process.argv;
 
+if (!subcommand && process.stdin.isTTY && process.stdout.isTTY) {
+  await runMenu();
+  process.exit(0);
+}
+
 if (!subcommand || subcommand === '-h' || subcommand === '--help') {
   printHelp();
   process.exit(0);
 }
 
 switch (subcommand) {
+  case 'menu':
+    await runMenu();
+    break;
   case 'setup':
     await setup(args);
     break;

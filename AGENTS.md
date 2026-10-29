@@ -27,6 +27,7 @@ cobaco/
 ├── configure-firewall.sh # UFW: Web / SSH / メール(任意) のみ許可
 ├── configure-fail2ban.sh # fail2ban sshd jail (BAN は全ポート遮断)
 ├── configure-os.sh       # OS: ICMP リダイレクト無効化・不要サービス mask・root PM2 停止
+├── configure-nginx-default.sh # Nginx catch-all: 未知の Host / SNI を拒否 (444 / ssl_reject_handshake)
 ├── apply-php-fpm-ini.sh  # バージョン共通 FPM ini の配置と FPM reload
 ├── apply-php-fpm-services.sh # domains.yml で使わない PHP-FPM を停止 (確認あり)
 ├── apply-mysql.sh        # domains.yml の mysql 宣言を MariaDB に適用
@@ -42,6 +43,8 @@ cobaco/
 ├── deploy.sh             # git pull + ビルド + 再起動
 ├── monitor.sh            # サーバー異常検知と Webhook 通知
 ├── install-monitor.sh    # monitor の systemd timer / logrotate 配置
+├── install-cli.sh        # cobaco コマンド (対話メニュー) をビルドして /usr/local/bin に配置 (root)
+├── cli/                  # cobaco コマンドのソース (Bun + TypeScript)。メニュー項目は cli/src/menu/catalog.ts
 ├── domains.yml.sample    # ドメイン宣言の雛形
 ├── monitor.yml.sample    # サーバー監視設定の雛形
 └── templates/
@@ -49,6 +52,7 @@ cobaco/
     ├── nginx-php-ssl.conf.tmpl     # PHP（HTTPS・証明書あり）
     ├── nginx-nodejs.conf.tmpl      # Node.js（HTTP のみ）
     ├── nginx-nodejs-ssl.conf.tmpl  # Node.js（HTTPS・証明書あり）
+    ├── nginx-default.conf          # catch-all (default_server)
     ├── php-fpm-pool.conf.tmpl      # サイト別 PHP-FPM プール
     └── php/
         └── <ver>/99-cobaco.ini     # バージョン共通 FPM ini (7.3 / 7.4 / 8.2 / 8.3 / 8.5)
@@ -57,6 +61,8 @@ cobaco/
 ## 基本的な使い方
 
 ```bash
+# どれを実行すればよいか迷ったら: cobaco  (対話メニュー。導入は bash install-cli.sh)
+
 # 0. 初回のみ: SETUP_USERS.md に従い root SSH (鍵のみ) と cobaco ユーザーを設定
 
 # 1. root で SSH 接続してセットアップ
@@ -85,6 +91,8 @@ bash deploy.sh example.com
 ### [DOC.md](./DOC.md) — 仕様・構成ドキュメント
 
 バーチャルホストの宣言（`domains.yml`）、Nginx 設定、ドキュメントルート、SSL 証明書のパスなどを記載する。**スクリプトや運用仕様を追加・変更したときは、`DOC.md` も同じ PR / コミットで更新すること。**
+
+スクリプトを追加・変更したときは、メニュー (`cli/src/menu/catalog.ts`) の項目も合わせて更新すること。
 
 ### [SETUP_USERS.md](./SETUP_USERS.md) — ユーザー・SSH セットアップ手順
 

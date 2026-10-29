@@ -1,20 +1,4 @@
-import { readFileSync } from 'fs';
-import { parse } from 'yaml';
-import { resolveDomainsFile } from '../lib/shell';
-
-type Domain = {
-  name: string;
-  type: 'php' | 'nodejs';
-  php_version?: string;
-  port?: number;
-  pm2_name?: string;
-  www_redirect?: boolean;
-  ssl?: boolean;
-  basic_auth?: {
-    title: string;
-    users: { id: string; password: string }[];
-  };
-};
+import { loadDomains, type Domain } from '../lib/domains';
 
 type Column = {
   header: string;
@@ -57,21 +41,22 @@ export async function list(args: string[]): Promise<void> {
     return;
   }
 
-  const resolved = resolveDomainsFile();
-  if (!resolved.ok) {
-    console.error(`Error: domains.yml not found: ${resolved.systemPath}`);
-    console.error(`Copy ${resolved.samplePath} and edit it.`);
-    process.exit(1);
+  if (!printDomains()) process.exit(1);
+}
+
+// 一覧を表示する。domains.yml が読めなければ false
+export function printDomains(): boolean {
+  const loaded = loadDomains();
+  if (!loaded.ok) {
+    console.error(loaded.message);
+    return false;
   }
-  const domainsPath = resolved.path;
 
-  const content = readFileSync(domainsPath, 'utf8');
-  const parsed = parse(content) as { domains: Domain[] };
-
-  if (!parsed?.domains?.length) {
+  if (!loaded.domains.length) {
     console.log('No domains defined in domains.yml.');
-    return;
+    return true;
   }
 
-  renderTable(parsed.domains);
+  renderTable(loaded.domains);
+  return true;
 }
