@@ -1,118 +1,60 @@
-# cobaco 対話メニュー (`cobaco` を引数なしで起動)
+# メニューに「新しいドメインを追加」を追加
 
 ## Context
 
-スクリプトが 15 本近くに増え、「どんな時に何を実行すればよいか」が分からなくなってきた。矢印キーと Enter (番号キーでも可) で選ぶだけで、用途の説明を読み、対象ドメインを選び、実行するコマンドを確認してから実行できるメニューを作る。
-
-リポジトリには既に `cli/` (Bun + TypeScript、`bun build --compile` で単体バイナリ、setup / list / apply / deploy) がある。ただし DOC.md / AGENTS.md に記載がなく、`apply` / `setup` は `sudo` 前提で cobaco ユーザーの sudo 権限 (reload のみ) と合っていない。この CLI を拡張してメニューを載せ、あわせて現状に合わせて直す。
+`cobaco` メニューではドメイン追加が完結しない。`domains.yml` を手で編集し、そのあと「設定を適用」「PHP-FPM」「git clone」「デプロイ」を別々に、正しい順で実行する必要があって迷う。そこで root 用の項目「新しいドメインを追加」を作り、対話で基本項目を入力して `domains.yml` に追記し、そのまま初回デプロイまで 1 本の流れで進めるウィザードにする。
 
 決めたこと (ユーザー回答):
-- 既存 `cli/` を拡張する。VPS 上で bun を使ってビルドする
-- 矢印キーに加えて番号キーでも選べるようにする (ConoHa Web コンソール対策)
-- 実行前に同等のシェルコマンドを表示し、確認してから実行する
-- 各項目に「どういう時に使うか」の説明を付ける
-- root / cobaco で表示する項目を出し分ける
-- 対象ドメインは domains.yml から一覧で選ぶ (`--all` / `--dry-run` も選択肢に出す)
+- `domains.yml` には対話入力で自動追記する。mysql / basic_auth / php_settings などの細かい項目は後でエディタで書く
+- 追記後に続けて行うこと: add-domain.sh (dry-run → 本番)、PHP-FPM の起動確認、git clone、初回デプロイ
+- DNS を事前に確認し、このサーバーを向いていなければ警告して ssl を後回しにできる
 
-## ライブラリ
+## ウィザードの流れ (`cli/src/menu/add-domain-wizard.ts`)
 
-`prompts` は 2021 年以降ほぼ更新が止まっているため、**`@inquirer/prompts`** を使う。
-- `select` が数字キーで項目を選べる (番号入力の要件を満たす)
-- カーソル位置の項目の `description` をリストの下に出せる (用途の説明にそのまま使える)
-- `Separator` でグループ見出しを作れる
-- Ctrl+C で `ExitPromptError` が飛ぶので、メニュー側で捕まえて静かに終了する
+最初にステップ一覧を表示する。各ステップは「実行 / スキップ / 中断」を選べる。コマンドを実行するステップは、既存メニューと同じく実行前にコマンドを表示して確認する。
 
-(@clack/prompts は見た目は良いが数字キー選択がないので見送る。実装前に ctx7 で `@inquirer/select` の数字キー対応を再確認する。)
+1. **ドメイン名**: 小文字の FQDN だけを受け付ける。`domains.yml` の `name` / `ssl_subdomains` と重複したらエラーにして再入力させる
+2. **type**: php / nodejs
+   - php: `php_version` を選ぶ。選択肢はサーバーにある `/etc/php/*/fpm` から作り、新しい順に並べて先頭を既定にする
+   - nodejs: `port` は既存の最大 port + 1 (なければ 3000) を既定にする。1024〜65535 の範囲で、他ドメインと重複しないこと。`pm2_name` はドメイン名の `.` を `-` にしたものを既定にし、重複は不可
+3. **www_redirect**: confirm で選ぶ (既定 No)
+4. **DNS 確認**: `node:dns` で `name` (www_redirect なら `www.` も) の A / AAAA を引き、このサーバーのグローバル IP (`os.networkInterfaces()`) と比べて結果を表示する
+5. **ssl**: DNS が一致していれば既定 Yes。不一致または未解決なら既定 No にして「DNS 設定後に ssl: true にして『ドメイン設定を適用』」と案内する。ssl と www_redirect が両方 Yes のときは `ssl_subdomains: [www.<name>]` を自動で付ける (add-domain.sh の検証ルールに合わせる)
+6. **プレビュー → 追記**: 追加する YAML を表示し、confirm したら追記する (方法は下記)
+7. **add-domain.sh**: まず `bash add-domain.sh --dry-run <name>` を実行する。終了コードが 0 なら「本番実行しますか?」と聞いて `bash add-domain.sh <name>`。失敗したらその時点で止め、domains.yml を直して「ドメイン設定を適用」から再開するよう案内する
+8. **PHP-FPM** (php のときだけ): `systemctl is-active php<ver>-fpm` が active でなければ `bash apply-php-fpm-services.sh` を実行する (使うバージョンが止まっていれば起動する)。active ならスキップしたことだけ表示する
+9. **git clone** (リポジトリ URL を入力。空ならスキップ):
+   - add-domain.sh が `/var/www/<name>` に `conf/` や `public/` を作った後なので `git clone` は使えない。cobaco ユーザーで `git init -b <branch>` → `remote add origin <url>` → `fetch origin` → `checkout -t origin/<branch>` を順に実行する (ブランチの既定は main)
+   - URL が SSH 形式 (`git@` / `ssh://`) のとき: cobaco に `~/.ssh/id_ed25519` がなければ作るか聞き (`ssh-keygen -t ed25519 -N ""`)、公開鍵を表示して「GitHub の Deploy key に登録したら Enter」で待つ。fetch は `GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new'` で実行する
+   - すでに `.git` があればスキップする
+10. **初回デプロイ**: `sudo -u cobaco -i bash <SCRIPT_DIR>/deploy.sh [--branch X] <name>`。`-i` を付けるのは、nvm を読む `/etc/profile.d/nvm.sh` を通すため
+11. **まとめ**: 各ステップの結果 (完了 / スキップ / 失敗) と、残りの手作業 (mysql・basic_auth・php_settings は domains.yml を編集してから「ドメイン設定を適用」、ssl を後回しにした場合の手順) を表示する
 
-## 構成
+## domains.yml への追記 (`cli/src/lib/domains.ts` に `appendDomain` を追加)
 
-```
-cli/src/
-├── index.ts            # 引数なし + TTY → メニュー。-h はヘルプ。既存サブコマンドは残す
-├── menu/
-│   ├── index.ts        # メインループ: カテゴリ選択 → 項目選択 → 引数入力 → コマンド表示 → 確認 → 実行 → Enter で戻る
-│   ├── catalog.ts      # メニュー項目の宣言 (下記)
-│   └── inputs.ts       # 共通入力: ドメイン選択 / dry-run 確認 / テキスト入力
-├── lib/
-│   ├── shell.ts        # run() を終了コードを返す形に変更 (runOrExit を別に用意)。SCRIPT_DIR 解決を修正
-│   └── domains.ts      # list.ts の Domain 型と読み込みを切り出し (list とメニューで共用)
-└── commands/           # apply / setup から sudo を外す (root で直接実行する前提に)
-```
+利用者のコメントや書式を崩さないよう、`yaml` で全体を書き直すのではなくテキストとして末尾に追記する。
+- `stringify([entry])` を 2 スペース字下げして、ファイル末尾に空行 + エントリとして追加する
+- 書き込みの前に `domains.yml.bak` に退避し、一時ファイルに書いてから rename する。パーミッション (644) は元のファイルに合わせる
+- 書き込み後に読み直し、`domains[]` に新しい `name` が入っているか確認する。入っていなければ (`domains:` が最後のトップレベルキーではない場合など) .bak から戻し、「手で追記してください」と表示してプレビューの YAML を出す
 
-### catalog.ts の項目定義
+## メニューへの組み込み
 
-```ts
-type MenuItem = {
-  label: string;            // 例: 'ドメイン設定を適用'
-  when: string;             // 例: 'domains.yml を編集した後に。Nginx・SSL・FPM プールを生成'
-  user: 'root' | 'cobaco' | 'any';
-  build: (ctx) => Promise<string[] | null>; // 引数を対話で集めて argv を返す。null で戻る
-};
-type MenuGroup = { label: string; items: MenuItem[] };
-```
-
-実行ユーザーは `process.getuid() === 0` で判定。対象外ユーザーの項目は出さない (グループが空なら見出しごと出さない)。実行は `run(['bash', join(SCRIPT_DIR, 'add-domain.sh'), ...])` のようにスクリプトを直接呼ぶ (sudo は使わない)。表示するコマンドは `bash add-domain.sh --dry-run example.com` のように SCRIPT_DIR からの相対で見せる。
-
-### メニュー内容 (初版)
-
-| グループ | 項目 | スクリプト | ユーザー |
-|---|---|---|---|
-| ドメイン | ドメイン一覧 | (list.ts を内部呼び出し) | any |
-| | ドメイン設定を適用 | `add-domain.sh <domain\|--all> [--dry-run]` | root |
-| | DB を適用 | `apply-mysql.sh <domain\|--all> [--dry-run]` | root |
-| | デプロイ | `deploy.sh [--branch X] <domain\|--all>` | cobaco |
-| PHP | FPM 共通 ini を反映 | `apply-php-fpm-ini.sh` | root |
-| | 使わない PHP-FPM を停止 | `apply-php-fpm-services.sh [--dry-run]` | root |
-| | Composer / php シムを配置 | `install-composer.sh` | root |
-| セキュリティ | SSH 許可 IP 一覧 / 追加 / 削除 / 再適用 / 絞り込み off・on | `ssh-allow <sub>` (add は IP とメモを入力、remove は一覧から選択) | root |
-| | ファイアウォール設定 | `configure-firewall.sh` | root |
-| | fail2ban 設定 | `configure-fail2ban.sh` | root |
-| | 未知の Host を拒否 (Nginx catch-all) | `configure-nginx-default.sh` | root |
-| | OS の調整 | `configure-os.sh` | root |
-| 監視 | 監視を試しに実行 | `monitor.sh --dry-run` | root |
-| | 通知テスト | `monitor.sh --test-notify` | root |
-| | 監視タイマーを配置 | `install-monitor.sh` | root |
-| 初期構築 | サーバー初回セットアップ | `setup.sh` | root |
-
-ドメイン選択は domains.yml の `name` を並べ、先頭に「全ドメイン (--all)」、末尾に「← 戻る」。deploy のブランチは既定 `main` のテキスト入力。各ドメインの hint に `type / php_version` を出す。domains.yml が見つからなければ list.ts と同じ案内を表示してメニューに戻る。
-
-ssh-allow はリポジトリの `bin/ssh-allow` を呼ぶ (未配置の環境でも動くように)。
-
-### 実行フロー
-
-1. 選んだ項目の引数を集める → `$ bash add-domain.sh --dry-run example.com` を表示
-2. `confirm('実行しますか?')` (既定 Yes)。No ならメニューへ
-3. stdin/stdout を継承して実行。終了コードを `[OK]` / `[ERROR] exit N` で表示
-4. 「Enter でメニューに戻る」→ 1 つ上の階層へ。トップで「終了」を選ぶか Ctrl+C で終了
-
-## SCRIPT_DIR 解決の修正
-
-現状は `dirname(process.argv[0])` を見ているが、コンパイル済み Bun では `argv[0]` が `bun` になり、シンボリックリンク経由でも壊れる。`realpathSync(process.execPath)` の親の親 (`cli/cobaco` → リポジトリ直下) を使い、従来どおり `add-domain.sh` の存在で確認する。開発時 (`bun run`) は `import.meta.dir` からの解決を残す。
-
-## インストール: `install-cli.sh` (新規・root)
-
-- bun を `/usr/local/lib/bun` に入れる (`BUN_INSTALL` 指定、バージョン固定、入っていれば skip)
-- `cd cli && bun install --frozen-lockfile && bun run build`
-- `/usr/local/bin/cobaco` → `<repo>/cli/cobaco` のシンボリックリンク (root / cobaco 両方が使える)
-- `package.json` の build target を `bun-linux-x64` のまま、ARM VPS 用に `uname -m` で `bun-linux-arm64` に切り替え
-- 冪等。git pull 後に再実行すれば再ビルドされる
-- setup.sh の最後の案内に「`bash install-cli.sh` でメニューを導入」を追記
-
-## ドキュメント
-
-- AGENTS.md: ファイル構成に `cli/` と `install-cli.sh` を追加。「基本的な使い方」に「迷ったら `cobaco`」を追記
-- DOC.md: `cobaco` メニューの節 (導入方法、ユーザーによる出し分け、項目追加の方法 = catalog.ts に 1 件足す)。新しいスクリプトを追加したら catalog.ts にも登録する旨を明記
+- `catalog.ts` の「ドメイン」グループの先頭に「新しいドメインを追加」を置く (user: root)。`when` は「domains.yml への追記から初回デプロイまでを順番に案内する」
+- `MenuItem.action` を使う。実行して確認する処理は `menu/index.ts` の `runItem` 内にあるので、`runCommand(cmd, { message }) => Promise<number | 'skipped'>` として切り出し、ウィザードと共用する
+- 開発確認用に、環境変数 `COBACO_AS_ROOT=1` で root 項目を表示できるようにする (スクリプト側でも root を確認しているので、表示が出るだけで害はない)
 
 ## 変更ファイル
 
-- 新規: `cli/src/menu/{index,catalog,inputs}.ts`, `cli/src/lib/domains.ts`, `install-cli.sh`
-- 変更: `cli/src/index.ts`, `cli/src/lib/shell.ts`, `cli/src/commands/{list,apply,setup}.ts`, `cli/package.json` (+ `@inquirer/prompts`、build スクリプト), `cli/bun.lock`, `setup.sh` (案内のみ), `AGENTS.md`, `DOC.md`
+- 新規: `cli/src/menu/add-domain-wizard.ts`
+- 変更: `cli/src/menu/catalog.ts`, `cli/src/menu/index.ts` (`runCommand` の切り出し), `cli/src/menu/inputs.ts` (必要な入力関数), `cli/src/lib/domains.ts` (`appendDomain` と重複チェック用のヘルパー), `cli/src/lib/shell.ts` (`COBACO_AS_ROOT`)
+- ドキュメント: `DOC.md` の cobaco メニュー節に「新しいドメインを追加」の流れと、git clone の方式 (init + fetch) と Deploy key の手順を追記。AGENTS.md の基本的な使い方に「ドメイン追加はメニューの『新しいドメインを追加』でも可」と 1 行追記
 
 ## 検証
 
-1. Mac: `cd cli && bun install && bun run dev` でメニュー表示、矢印・数字キー・Ctrl+C の動作、コマンド表示を確認 (domains.yml はリポジトリ直下のものを読めるよう、開発時のみ `COBACO_DOMAINS` 環境変数で上書き可能にする)
-2. `bunx tsc --noEmit` で型チェック
-3. VPS: root で `bash install-cli.sh` → `cobaco` → 「ドメイン設定を適用」→ 1 ドメイン → `--dry-run` で実行し、表示コマンドと実際の出力が一致すること
-4. cobaco ユーザーで `cobaco` → root 専用項目が出ないこと、「デプロイ」が動くこと
-5. ConoHa Web コンソールで数字キー選択ができること
-6. `cobaco list` / `cobaco deploy example.com` など既存サブコマンドがそのまま動くこと
+1. `bun run typecheck`
+2. Mac: `domains.yml.sample` を scratchpad にコピーし、`COBACO_DOMAINS=<copy> COBACO_AS_ROOT=1 bun run dev` でウィザードを pty から操作する
+   - 重複ドメイン・不正な FQDN・使用中の port が弾かれること
+   - 追記後のファイルで既存のコメントと書式が保たれ、`yaml` でパースできること (diff で確認)
+   - DNS 確認が実在ドメインと未登録ドメインの両方で期待どおりに表示されること
+   - add-domain.sh 以降は Mac では root チェックで失敗するので、失敗時に止まって案内が出ることを確認する
+3. VPS (root): テスト用のサブドメインで、ssl を後回しにして最後まで通す。domains.yml の追記内容、`/var/www/<name>/.git`、デプロイの成功を確認する。その後 DNS を設定し、ssl: true に変えて再適用できることも確認する

@@ -1,4 +1,5 @@
 import { printDomains } from '../commands/list';
+import { addDomainWizard } from './add-domain-wizard';
 import { askText, pickDomain, pickDryRun } from './inputs';
 
 // build: 引数を対話で集め、リポジトリ直下から実行するコマンドを返す。null ならメニューに戻る
@@ -23,8 +24,14 @@ const fixed = (...cmd: string[]) => async () => cmd;
 export const CATALOG: MenuGroup[] = [
   {
     label: 'ドメイン',
-    when: 'ドメインの一覧・設定の適用・DB・デプロイ',
+    when: 'ドメインの追加・一覧・設定の適用・DB・デプロイ',
     items: [
+      {
+        label: '新しいドメインを追加',
+        when: 'ドメインを増やすときに。domains.yml への追記から設定の適用・git 取得・初回デプロイまでを順番に案内する',
+        user: 'root',
+        action: addDomainWizard,
+      },
       {
         label: 'ドメイン一覧',
         when: 'domains.yml に宣言されたドメインを表で確認する',

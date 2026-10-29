@@ -38,6 +38,11 @@ export function isRoot(): boolean {
   return process.getuid?.() === 0;
 }
 
+// メニューの root 項目を表示するか (COBACO_AS_ROOT=1 は開発時の表示確認用。各スクリプトも root を確認する)
+export function showRootItems(): boolean {
+  return isRoot() || process.env.COBACO_AS_ROOT === '1';
+}
+
 // 終了コードを返す (メニューから使う)
 export async function run(cmd: string[]): Promise<number> {
   const proc = Bun.spawn(cmd, {

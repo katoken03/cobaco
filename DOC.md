@@ -29,9 +29,22 @@ bash install-cli.sh    # bun の導入・ビルド・/usr/local/bin/cobaco の�
 
 cobaco ユーザーから使うには、リポジトリ（`cli/cobaco` と各スクリプト）と `/root/cobaco_config/domains.yml` を cobaco が読める必要がある（`chmod 711 /root` など）。
 
+### 新しいドメインを追加（ウィザード）
+
+root で「ドメイン → 新しいドメインを追加」を選ぶと、次の順に進む。各ステップは実行・スキップ・中断を選べる。
+
+1. ドメイン名・種類（php の場合は `php_version`、nodejs の場合は `port` と `pm2_name`）・www・SSL を入力する。ドメイン名、port、pm2_name が既存と重複すると受け付けない。php_version の選択肢は `/etc/php/*/fpm` から作る。SSL を選ぶ前に DNS（A / AAAA）がこのサーバーのグローバル IP を向いているかを確認し、向いていなければ SSL の既定を No にする。SSL と www を両方有効にしたときは `ssl_subdomains: [www.<name>]` を自動で付ける
+2. 入力内容を `domains.yml` の末尾にテキストとして追記する（既存のコメントや書式は変えない）。変更前のファイルは `domains.yml.bak` に残す。`domains:` が最後のキーでないなど末尾に追記できない形のときは、何も書かずに手で追記するよう案内する
+3. `add-domain.sh --dry-run <name>` を実行し、成功したら確認のうえ `add-domain.sh <name>` を実行する。失敗したらウィザードはここで終わる
+4. php の場合、`php<ver>-fpm` が止まっていれば `apply-php-fpm-services.sh` で起動する
+5. リポジトリ URL とブランチを入力し、cobaco ユーザーで `/var/www/<name>` に `git init` → `remote add origin` → `fetch` → `checkout -t origin/<branch>` を実行する。add-domain.sh が先に `conf/` などを作っているため `git clone` は使わない。SSH 形式の URL では `/home/cobaco/.ssh/id_ed25519` がなければ作成し、公開鍵を表示するので、リポジトリの Deploy key（読み取り専用）に登録してから進める。初回の fetch だけ `StrictHostKeyChecking=accept-new` を付ける
+6. `sudo -u cobaco -i bash deploy.sh [--branch X] <name>` で初回デプロイする
+
+mysql・basic_auth・php_settings はウィザードでは入力しない。必要なら `domains.yml` を編集してから「ドメイン設定を適用」を実行する。
+
 ### メニュー項目の追加
 
-スクリプトを追加・変更したら [`cli/src/menu/catalog.ts`](cli/src/menu/catalog.ts) にも登録する。1 項目は `label`（名前）・`when`（どういう時に使うか）・`user`（`root` / `cobaco` / `any`）・`build`（引数を対話で集めて実行コマンドを返す）で書く。ドメイン選択・dry-run 選択・テキスト入力は [`cli/src/menu/inputs.ts`](cli/src/menu/inputs.ts) の関数を使う。開発時は `cd cli && COBACO_DOMAINS=../domains.yml bun run dev` で手元の `domains.yml` を読ませて確認できる。
+スクリプトを追加・変更したら [`cli/src/menu/catalog.ts`](cli/src/menu/catalog.ts) にも登録する。1 項目は `label`（名前）・`when`（どういう時に使うか）・`user`（`root` / `cobaco` / `any`）・`build`（引数を対話で集めて実行コマンドを返す）で書く。ドメイン選択・dry-run 選択・テキスト入力は [`cli/src/menu/inputs.ts`](cli/src/menu/inputs.ts) の関数を使う。開発時は `cd cli && COBACO_DOMAINS=../domains.yml bun run dev` で手元の `domains.yml` を読ませて確認できる。`COBACO_AS_ROOT=1` を付けると root 用の項目も表示する（表示の確認用。スクリプト自体は root でなければ失敗する）。
 
 ## PHP 設定
 

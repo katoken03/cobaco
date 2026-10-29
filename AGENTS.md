@@ -71,6 +71,7 @@ bash setup.sh
 # 2. 本番: /root/cobaco_config/domains.yml にドメインを追加してから適用
 #    (domains.yml.sample をコピー。cobaco が読めるよう chmod 711 /root && chmod 644 ファイル)
 bash add-domain.sh example.com
+#    (cobaco メニューの「ドメイン → 新しいドメインを追加」なら domains.yml への追記から初回デプロイまで案内する)
 # DB だけ更新するとき: bash apply-mysql.sh example.com  (root)
 
 # 3. デプロイ (cobaco ユーザーで実行)

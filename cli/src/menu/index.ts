@@ -1,13 +1,8 @@
-import { confirm, input, select } from '@inquirer/prompts';
-import { isRoot, run, SCRIPT_DIR } from '../lib/shell';
+import { select } from '@inquirer/prompts';
+import { showRootItems } from '../lib/shell';
 import { CATALOG, type MenuGroup, type MenuItem } from './catalog';
+import { DIM, NC, pause, runCommand } from './exec';
 import { numbered } from './inputs';
-
-const RED = '\x1b[0;31m';
-const GREEN = '\x1b[0;32m';
-const BLUE = '\x1b[0;34m';
-const DIM = '\x1b[2m';
-const NC = '\x1b[0m';
 
 const EXIT = Symbol('exit');
 const BACK = Symbol('back');
@@ -16,17 +11,6 @@ function visibleItems(group: MenuGroup, root: boolean): MenuItem[] {
   return group.items.filter(item =>
     item.user === 'any' || (item.user === 'root') === root
   );
-}
-
-// 表示用。空白や記号を含む引数だけクォートする
-function shellQuote(args: string[]): string {
-  return args
-    .map(a => (/^[\w@%+=:,./-]+$/.test(a) ? a : `'${a.replace(/'/g, `'\\''`)}'`))
-    .join(' ');
-}
-
-async function pause(): Promise<void> {
-  await input({ message: 'Enter でメニューに戻る', theme: { prefix: '' } });
 }
 
 async function runItem(item: MenuItem): Promise<void> {
@@ -38,24 +22,7 @@ async function runItem(item: MenuItem): Promise<void> {
 
   const cmd = await item.build!();
   if (!cmd) return;
-
-  console.log('');
-  console.log(`${DIM}# ${SCRIPT_DIR} で実行${NC}`);
-  console.log(`${BLUE}$ ${shellQuote(cmd)}${NC}`);
-  if (!(await confirm({ message: '実行しますか?', default: true }))) return;
-
-  console.log('');
-  // Ctrl+C はスクリプトだけを止め、メニューには戻る
-  const ignore = () => {};
-  process.on('SIGINT', ignore);
-  const code = await run(cmd).finally(() => process.off('SIGINT', ignore));
-  console.log('');
-  if (code === 0) {
-    console.log(`${GREEN}[OK]${NC}   完了しました`);
-  } else {
-    console.log(`${RED}[ERROR]${NC} 終了コード ${code}`);
-  }
-  await pause();
+  if ((await runCommand(cmd)) !== 'skipped') await pause();
 }
 
 async function groupMenu(group: MenuGroup, items: MenuItem[]): Promise<void> {
@@ -77,7 +44,7 @@ async function groupMenu(group: MenuGroup, items: MenuItem[]): Promise<void> {
 }
 
 export async function menu(): Promise<void> {
-  const root = isRoot();
+  const root = showRootItems();
   const groups = CATALOG
     .map(group => ({ group, items: visibleItems(group, root) }))
     .filter(g => g.items.length > 0);
