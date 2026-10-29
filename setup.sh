@@ -73,6 +73,8 @@ apt-get install -y -qq \
     wget \
     git \
     unzip \
+    ripgrep \
+    fd-find \
     software-properties-common \
     ufw \
     fail2ban \
@@ -81,6 +83,8 @@ apt-get install -y -qq \
     mariadb-server \
     certbot \
     python3-certbot-nginx
+# Ubuntu の fd-find は fdfind。AGENTS.md の fd 慣習に合わせ fd も使えるようにする
+ln -sfn "$(command -v fdfind)" /usr/local/bin/fd
 success "基本パッケージのインストール完了"
 
 # ─────────────────────────────────────────────

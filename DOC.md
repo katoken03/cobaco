@@ -46,6 +46,17 @@ mysql・basic_auth・php_settings はウィザードでは入力しない。必�
 
 スクリプトを追加・変更したら [`cli/src/menu/catalog.ts`](cli/src/menu/catalog.ts) にも登録する。1 項目は `label`（名前）・`when`（どういう時に使うか）・`user`（`root` / `cobaco` / `any`）・`build`（引数を対話で集めて実行コマンドを返す）で書く。ドメイン選択・dry-run 選択・テキスト入力は [`cli/src/menu/inputs.ts`](cli/src/menu/inputs.ts) の関数を使う。開発時は `cd cli && COBACO_DOMAINS=../domains.yml bun run dev` で手元の `domains.yml` を読ませて確認できる。`COBACO_AS_ROOT=1` を付けると root 用の項目も表示する（表示の確認用。スクリプト自体は root でなければ失敗する）。
 
+## シェルユーティリティ（rg / fd）
+
+`setup.sh` の基本パッケージで **ripgrep**（`rg`）と **fd-find**（実体は `fdfind`）を入れる。Ubuntu では `fd` というコマンド名は付かないため、`setup.sh` が `/usr/local/bin/fd` → `fdfind` のシンボリックリンクを冪等に置く（[AGENTS.md](./AGENTS.md) の慣習: `rg` / `fd` を使い `grep` / `find` は使わない）。
+
+既存サーバーにだけ足すとき（`setup.sh` 全体は回さない）:
+
+```bash
+apt-get update -qq && apt-get install -y ripgrep fd-find
+ln -sfn "$(command -v fdfind)" /usr/local/bin/fd
+```
+
 ## PHP 設定
 
 Web (PHP-FPM) 向けの PHP 設定は次の3層に分ける。CLI (`php`, `composer`, `artisan`) にはサイト設定は効かず、`/etc/php/<ver>/cli/php.ini` を使う。
