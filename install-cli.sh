@@ -57,6 +57,8 @@ fi
 info "cobaco コマンドをビルド中..."
 (
     cd "$CLI_DIR"
+    # package.json の build スクリプトは PATH 上の bun を呼ぶ
+    export PATH="$(dirname "$BUN"):$PATH"
     "$BUN" install --frozen-lockfile
     "$BUN" run build
 )
